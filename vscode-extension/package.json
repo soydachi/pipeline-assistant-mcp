@@ -1,0 +1,137 @@
+{
+  "name": "pipeline-assistant-vscode",
+  "displayName": "Pipeline Assistant MCP",
+  "description": "AI-powered CI/CD pipeline assistant for Azure DevOps and GitHub Actions",
+  "version": "1.0.0",
+  "publisher": "pipeline-assistant",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Other"
+  ],
+  "icon": "images/icon.png",
+  "activationEvents": [
+    "onLanguage:yaml",
+    "onCommand:pipelineAssistant.generate",
+    "onCommand:pipelineAssistant.analyze",
+    "onCommand:pipelineAssistant.suggestImprovements",
+    "onCommand:pipelineAssistant.openWiki"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pipelineAssistant.generate",
+        "title": "Generate Pipeline",
+        "category": "Pipeline Assistant"
+      },
+      {
+        "command": "pipelineAssistant.analyze",
+        "title": "Analyze Current Pipeline",
+        "category": "Pipeline Assistant"
+      },
+      {
+        "command": "pipelineAssistant.suggestImprovements",
+        "title": "Suggest Improvements",
+        "category": "Pipeline Assistant"
+      },
+      {
+        "command": "pipelineAssistant.openWiki",
+        "title": "Open Standards Wiki",
+        "category": "Pipeline Assistant"
+      },
+      {
+        "command": "pipelineAssistant.applyQuickFix",
+        "title": "Apply Pipeline Fix",
+        "category": "Pipeline Assistant"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceExtname == .yml || resourceExtname == .yaml",
+          "command": "pipelineAssistant.analyze",
+          "group": "pipelineAssistant"
+        },
+        {
+          "when": "resourceExtname == .yml || resourceExtname == .yaml",
+          "command": "pipelineAssistant.suggestImprovements",
+          "group": "pipelineAssistant"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "pipelineAssistant.generate",
+          "when": "workspaceFolderCount > 0"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Pipeline Assistant",
+      "properties": {
+        "pipelineAssistant.mcpServerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the MCP server executable"
+        },
+        "pipelineAssistant.wikiPath": {
+          "type": "string",
+          "default": "./wiki/standards",
+          "description": "Path to the standards wiki"
+        },
+        "pipelineAssistant.enableAutoAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic analysis on save"
+        },
+        "pipelineAssistant.strictMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable strict mode for analysis"
+        },
+        "pipelineAssistant.showInlineHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline hints and suggestions"
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "yaml",
+        "extensions": [".yml", ".yaml"],
+        "aliases": ["YAML", "yaml"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "yaml",
+        "path": "./snippets/pipeline-snippets.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.42.0",
+    "typescript": "^5.1.3"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "yaml": "^2.3.0"
+  }
+}

@@ -1,0 +1,89 @@
+# Pipeline con múltiples problemas de seguridad y configuración
+# Este archivo se usa para demostrar las capacidades del PipelineAnalyzer
+
+trigger: true  # PROBLEMA: Trigger inseguro
+
+variables:
+  # PROBLEMA: Secretos hardcodeados
+  - name: dbPassword
+    value: "SuperSecret123!"
+  - name: apiKey
+    value: "sk-proj-1234567890abcdef"
+  - name: connectionString
+    value: "Server=myserver.database.windows.net;Database=mydb;User Id=admin;Password=Admin123!;"
+
+# PROBLEMA: Falta pool definition
+
+# PROBLEMA: No usa estructura de stages (usa jobs directamente)
+jobs:
+  - job: BuildJob
+    displayName: 'Build Application'
+    steps:
+      # PROBLEMA: No hay stage de Validate
+      # PROBLEMA: No hay stage de Security
+      
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '16.x'
+      
+      # PROBLEMA: No usa caché para NPM
+      - script: |
+          npm install
+          echo "Building with password: HardcodedPass123"  # PROBLEMA: Password en logs
+        displayName: 'Install dependencies'
+      
+      - script: npm run build
+        displayName: 'Build'
+      
+      # PROBLEMA: No hay npm audit
+      
+      - script: npm test
+        displayName: 'Run tests'
+        
+      # PROBLEMA: Tarea de seguridad con continueOnError
+      - task: SonarQubePrepare@5
+        displayName: 'Prepare SonarQube'
+        continueOnError: true  # PROBLEMA: Bypass de seguridad
+        
+  - job: DeployJob
+    displayName: 'Deploy'
+    dependsOn: BuildJob
+    steps:
+      - script: |
+          echo "Deploying to production"
+          export API_TOKEN="token-12345"  # PROBLEMA: Token hardcodeado
+        displayName: 'Deploy'
+        
+      # PROBLEMA: No hay verificación de servicios
+      # PROBLEMA: No hay health checks
+      
+      - task: AzureWebApp@1
+        inputs:
+          azureSubscription: 'MySubscription'
+          appName: 'my-app'
+          
+# PROBLEMAS DETECTADOS POR EL ANALYZER:
+# 
+# CRÍTICOS:
+# - Trigger inseguro (trigger: true)
+# - Secretos hardcodeados (múltiples)
+# - Falta stage de Security
+# - Sin herramientas de análisis de seguridad
+# - Estructura incorrecta (no usa stages)
+#
+# ALTOS:
+# - Bypass de seguridad (continueOnError en SonarQube)
+# - Falta stage de Validate
+# - Falta stage de Test separado
+#
+# MEDIOS:
+# - Sin npm audit para seguridad
+# - Sin configuración de trigger específica
+# - Sin pool definido
+#
+# SUGERENCIAS:
+# - Implementar caché para NPM
+# - Usar npm ci en lugar de npm install
+# - Separar en estructura multi-stage
+# - Agregar verificación de vulnerabilidades
+# - Implementar health checks post-deployment

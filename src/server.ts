@@ -181,15 +181,21 @@ class PipelineAssistantServer {
   }
 
   private async handleAnalyzePipeline(args: any) {
-    const { yamlContent, strictMode = false } = args;
+    const { yamlContent, strictMode = false, projectType } = args;
     
     // Cargar estándares
     await this.wikiParser.loadStandards();
     
-    // Analizar pipeline
-    const analysis = await this.analyzer.analyze(yamlContent, { strictMode });
+    // Analizar pipeline con todas las opciones
+    const analysis = await this.analyzer.analyze(yamlContent, { 
+      strictMode,
+      projectType,
+      checkSecurity: true,
+      checkPerformance: true,
+      checkCompliance: true
+    });
     
-    // Formatear respuesta
+    // Formatear respuesta detallada
     const response = this.formatAnalysisResponse(analysis);
     
     return {
@@ -221,26 +227,72 @@ class PipelineAssistantServer {
   private formatAnalysisResponse(analysis: any): string {
     let response = '# 📋 Análisis de Pipeline\n\n';
     
-    // Compliance Score
-    response += `## Score de Compliance: ${analysis.score}%\n\n`;
+    // Score y resumen
+    const scoreEmoji = analysis.score >= 80 ? '🟢' : 
+                       analysis.score >= 60 ? '🟡' : 
+                       analysis.score >= 40 ? '🟠' : '🔴';
+    
+    response += `## Score de Compliance: ${scoreEmoji} ${analysis.score}%\n\n`;
+    
+    response += `### 📊 Resumen\n`;
+    response += `- **Total de problemas**: ${analysis.summary.totalIssues}\n`;
+    response += `- **Críticos**: ${analysis.summary.criticalCount}\n`;
+    response += `- **Altos**: ${analysis.summary.highCount}\n`;
+    response += `- **Medios**: ${analysis.summary.mediumCount}\n`;
+    response += `- **Bajos**: ${analysis.summary.lowCount}\n\n`;
     
     // Violations
     if (analysis.violations.length > 0) {
-      response += '## ❌ Violaciones Críticas\n\n';
-      analysis.violations.forEach((v: any) => {
-        response += `- **${v.type}** (Línea ${v.line}): ${v.message}\n`;
-        if (v.suggestion) {
-          response += `  💡 Sugerencia: ${v.suggestion}\n`;
-        }
-      });
-      response += '\n';
+      response += '## ❌ Violaciones\n\n';
+      
+      // Agrupar por severidad
+      const critical = analysis.violations.filter((v: any) => v.severity === 'CRITICAL');
+      const high = analysis.violations.filter((v: any) => v.severity === 'HIGH');
+      const medium = analysis.violations.filter((v: any) => v.severity === 'MEDIUM');
+      const low = analysis.violations.filter((v: any) => v.severity === 'LOW');
+      
+      if (critical.length > 0) {
+        response += '### 🔴 CRÍTICAS\n';
+        critical.forEach((v: any) => {
+          response += `- **[${v.type}]** Línea ${v.line}: ${v.message}\n`;
+          if (v.rule) response += `  - Regla: \`${v.rule}\`\n`;
+          if (v.suggestion) response += `  - 💡 ${v.suggestion}\n`;
+          if (v.code) {
+            response += '  - Código sugerido:\n';
+            response += '  ```yaml\n';
+            v.code.split('\n').forEach((line: string) => {
+              response += '  ' + line + '\n';
+            });
+            response += '  ```\n';
+          }
+        });
+        response += '\n';
+      }
+      
+      if (high.length > 0) {
+        response += '### 🟠 ALTAS\n';
+        high.forEach((v: any) => {
+          response += `- **[${v.type}]** Línea ${v.line}: ${v.message}\n`;
+          if (v.suggestion) response += `  - 💡 ${v.suggestion}\n`;
+        });
+        response += '\n';
+      }
+      
+      if (medium.length > 0) {
+        response += '### 🟡 MEDIAS\n';
+        medium.forEach((v: any) => {
+          response += `- **[${v.type}]** Línea ${v.line}: ${v.message}\n`;
+        });
+        response += '\n';
+      }
     }
     
     // Warnings
     if (analysis.warnings.length > 0) {
       response += '## ⚠️ Warnings\n\n';
       analysis.warnings.forEach((w: any) => {
-        response += `- **${w.type}**: ${w.message}\n`;
+        response += `- **[${w.type}]** Línea ${w.line}: ${w.message}\n`;
+        if (w.suggestion) response += `  - 💡 ${w.suggestion}\n`;
       });
       response += '\n';
     }
@@ -248,10 +300,65 @@ class PipelineAssistantServer {
     // Suggestions
     if (analysis.suggestions.length > 0) {
       response += '## 💡 Sugerencias de Mejora\n\n';
-      analysis.suggestions.forEach((s: any) => {
-        response += `- ${s.message}\n`;
-      });
+      
+      // Agrupar por tipo
+      const performance = analysis.suggestions.filter((s: any) => s.type === 'PERFORMANCE');
+      const security = analysis.suggestions.filter((s: any) => s.type === 'SECURITY');
+      const quality = analysis.suggestions.filter((s: any) => s.type === 'QUALITY');
+      
+      if (performance.length > 0) {
+        response += '### ⚡ Rendimiento\n';
+        performance.forEach((s: any) => {
+          const priorityEmoji = s.priority === 'HIGH' ? '🔴' : 
+                               s.priority === 'MEDIUM' ? '🟠' : '🟢';
+          response += `- ${priorityEmoji} ${s.message}\n`;
+          if (s.description) response += `  - ${s.description}\n`;
+          if (s.code) {
+            response += '  ```yaml\n';
+            s.code.split('\n').forEach((line: string) => {
+              response += '  ' + line + '\n';
+            });
+            response += '  ```\n';
+          }
+        });
+        response += '\n';
+      }
+      
+      if (security.length > 0) {
+        response += '### 🛡️ Seguridad\n';
+        security.forEach((s: any) => {
+          response += `- ${s.message}\n`;
+          if (s.description) response += `  - ${s.description}\n`;
+        });
+        response += '\n';
+      }
+      
+      if (quality.length > 0) {
+        response += '### 📈 Calidad\n';
+        quality.forEach((s: any) => {
+          response += `- ${s.message}\n`;
+          if (s.description) response += `  - ${s.description}\n`;
+        });
+        response += '\n';
+      }
     }
+    
+    // Acciones recomendadas
+    response += '## 🎯 Acciones Recomendadas\n\n';
+    
+    if (analysis.summary.criticalCount > 0) {
+      response += '1. **🔴 URGENTE**: Resolver todas las violaciones críticas inmediatamente\n';
+    }
+    if (analysis.summary.highCount > 0) {
+      response += '2. **🟠 IMPORTANTE**: Abordar las violaciones altas antes del próximo release\n';
+    }
+    if (analysis.score < 60) {
+      response += '3. **📈 MEJORA**: Implementar las sugerencias para alcanzar un score mínimo del 80%\n';
+    }
+    
+    // Footer con enlace a documentación
+    response += '\n---\n';
+    response += '*Para más información, consulte la [wiki de estándares](wiki/standards/pipeline-standards.md)*\n';
     
     return response;
   }

@@ -10,17 +10,17 @@ Crear un servidor MCP funcional que genere y valide pipelines según estándares
 - [x] Escenario: Generar pipeline con servicios específicos ✅ Implementado
 - [x] Escenario: Aplicar políticas de seguridad obligatorias ✅ Implementado
 
-### Feature 2: Análisis de Pipelines Existentes
-- [ ] Escenario: Detectar violaciones críticas
-- [ ] Escenario: Detectar configuraciones inseguras
-- [ ] Escenario: Sugerir mejoras de rendimiento
-- [ ] Escenario: Validar estructura según tipo de proyecto
-- [ ] Escenario: Modo estricto vs modo normal
+### Feature 2: Análisis de Pipelines Existentes ✅ COMPLETADO
+- [x] Escenario: Detectar violaciones críticas ✅ Implementado
+- [x] Escenario: Detectar configuraciones inseguras ✅ Implementado
+- [x] Escenario: Sugerir mejoras de rendimiento ✅ Implementado
+- [x] Escenario: Validar estructura según tipo de proyecto ✅ Implementado
+- [x] Escenario: Modo estricto vs modo normal ✅ Implementado
 
 ### Feature 3: Integración con VS Code
-- [ ] Escenario: Generar pipeline desde comando
-- [ ] Escenario: Análisis en tiempo real mientras edito
-- [ ] Escenario: Quick fixes para violaciones
+- [x] Escenario: Generar pipeline desde comando ✅ Implementado
+- [x] Escenario: Análisis en tiempo real mientras edito ✅ Implementado
+- [x] Escenario: Quick fixes para violaciones ✅ Implementado
 - [ ] Escenario: Consultar wiki desde VS Code
 - [ ] Escenario: Autocompletado inteligente
 
@@ -59,10 +59,10 @@ Crear un servidor MCP funcional que genere y valide pipelines según estándares
 - [x] Generación de templates desde reglas ✅
 
 ### Pipeline Analyzer  
-- [ ] Motor de análisis YAML
-- [ ] Sistema de reglas y validaciones
-- [ ] Cálculo de compliance score
-- [ ] Generación de sugerencias contextuales
+- [x] Motor de análisis YAML ✅
+- [x] Sistema de reglas y validaciones ✅
+- [x] Cálculo de compliance score ✅
+- [x] Generación de sugerencias contextuales ✅
 
 ### VS Code Extension
 - [ ] Comandos básicos (generate, analyze)
@@ -78,31 +78,36 @@ Crear un servidor MCP funcional que genere y valide pipelines según estándares
 
 ## 📊 Estado Actual
 
-**Progreso Global**: 3/25 escenarios (12%)
-**Feature 1**: ✅ 100% COMPLETADO
-**Componentes Base**: 75% completado
+**Progreso Global**: 11/25 escenarios (44%)
+**Feature 1**: ✅ 100% COMPLETADO (3/3)
+**Feature 2**: ✅ 100% COMPLETADO (5/5)
+**Feature 3**: 🔄 60% EN PROGRESO (3/5)
+**Componentes Base**: 90% completado
 
-**Próximo paso**: Iniciar Feature 2 - Implementar PipelineAnalyzer para detectar violaciones
+**Próximo paso**: Completar Feature 3 - Wiki webview y autocompletado
 
 ## 📝 Notas
 
 ### ✅ Feature 1 Completado:
-- ✅ Generación básica de pipelines funcionando
-- ✅ Soporte completo para servicios Azure
-- ✅ Gestión automática de secretos con Key Vault
-- ✅ **PolicyEnforcer implementado** - Aplica automáticamente todas las políticas obligatorias
-- ✅ Políticas de seguridad por tipo de proyecto
-- ✅ Escaneo de contenedores cuando se usa Docker
-- ✅ Generación de reportes de compliance
-- ✅ Quality Gates con SonarQube
-- ✅ Validación de patrones de secretos peligrosos
+- Pipeline Generator con políticas automáticas
+- PolicyEnforcer para seguridad obligatoria
+- Soporte completo de servicios Azure
 
-### 🔄 Próximo: Feature 2 - Análisis de Pipelines
-- Detectar violaciones críticas
-- Detectar configuraciones inseguras
-- Sugerir mejoras de rendimiento
-- Validar estructura según tipo de proyecto
-- Modo estricto vs modo normal
+### ✅ Feature 2 Completado:
+- PipelineAnalyzer con detección completa
+- Detección de secretos y configuraciones inseguras
+- Análisis específico por lenguaje
+- Modo estricto
+
+### 🔄 Feature 3 En Progreso:
+- ✅ **Extensión VS Code creada** con comandos completos
+- ✅ **MCPClient** para comunicación con servidor
+- ✅ **DiagnosticProvider** para mostrar errores en Problems panel
+- ✅ **CodeActionProvider** con Quick Fixes inteligentes
+- ✅ **Generación de pipelines** desde Command Palette
+- ✅ **Análisis automático** al guardar archivos
+- ⏳ Wiki webview pendiente
+- ⏳ Autocompletado pendiente
 
 ## 🚀 Comandos Rápidos
 
