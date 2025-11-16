@@ -1,0 +1,92 @@
+version: '1.0'
+policies:
+  security:
+    mandatory:
+      - id: SEC-001
+        name: Secret Scanning
+        description: Todos los pipelines deben escanear secretos
+        tools:
+          - name: TruffleHog
+            task: TruffleHog@1
+            failOnDetection: true
+        severity: CRITICAL
+        
+      - id: SEC-002  
+        name: SAST Analysis
+        description: Análisis estático de código obligatorio
+        tools:
+          - name: SonarQube
+            task: SonarQubePrepare@5
+            qualityGate: true
+        severity: CRITICAL
+        
+      - id: SEC-003
+        name: Dependency Scanning
+        description: Escaneo de dependencias vulnerables
+        tools:
+          - name: Snyk
+            task: SnykSecurityScan@1
+            failOnIssues: true
+            severityThreshold: high
+        severity: HIGH
+        
+      - id: SEC-004
+        name: Container Scanning
+        description: Escaneo de imágenes Docker
+        condition: uses_docker
+        tools:
+          - name: Trivy
+            task: trivy@1
+            exitCode: 1
+        severity: HIGH
+
+  compliance:
+    mandatory:
+      - id: COM-001
+        name: Branch Protection
+        description: Solo permitir merge desde branches protegidos
+        allowedBranches:
+          - main
+          - develop
+          - release/*
+        severity: MEDIUM
+        
+      - id: COM-002
+        name: Approval Gates
+        description: Requerir aprobación para producción
+        environments:
+          - production
+          - prod
+        minApprovers: 2
+        severity: CRITICAL
+
+  quality:
+    recommended:
+      - id: QUA-001
+        name: Code Coverage
+        description: Mantener cobertura de código mínima
+        threshold: 80
+        severity: LOW
+        
+      - id: QUA-002
+        name: Performance Testing
+        description: Tests de carga para APIs
+        condition: is_api_project
+        severity: MEDIUM
+
+thresholds:
+  blocking:
+    - CRITICAL
+  warning:
+    - HIGH
+    - MEDIUM
+  informational:
+    - LOW
+
+enforcement:
+  mode: progressive  # learning | progressive | strict
+  grace_period_days: 30
+  exceptions:
+    - project: legacy-system
+      policies: [SEC-004, QUA-002]
+      until: 2024-12-31
