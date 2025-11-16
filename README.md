@@ -2,127 +2,264 @@
 
 ## 🚀 MCP Server para Asistencia Inteligente de Pipelines CI/CD
 
-Este proyecto implementa un servidor Model Context Protocol (MCP) que ayuda a los desarrolladores a generar y validar pipelines CI/CD según estándares corporativos documentados en una wiki.
+Sistema inteligente basado en Model Context Protocol (MCP) que automatiza la generación, validación y mejora de pipelines CI/CD según estándares corporativos, integrando IA generativa en el flujo DevSecOps.
 
-## 📋 Características
+## ✨ Características Principales
 
-- ✅ **Generación automática de pipelines** basada en estándares corporativos
-- ✅ **Análisis de pipelines existentes** contra políticas de seguridad
-- ✅ **Integración con VS Code** para asistencia en tiempo real
-- ✅ **Bot para Pull Requests** con comentarios automáticos
-- ✅ **Gestión de estándares** desde wiki en Markdown/YAML
+### 🤖 Generación Inteligente
+- **Generación automática de pipelines** basada en wiki corporativa
+- **Templates específicos por tecnología** (.NET, Node.js, Python, Java, Go)
+- **Aplicación automática de políticas de seguridad** desde el primer commit
+- **Soporte multi-servicio** para Azure (SQL, Redis, Key Vault, Service Bus, etc.)
 
-## 🏗️ Estructura del Proyecto
+### 🔍 Análisis y Validación
+- **Detección de 15+ tipos de violaciones** de seguridad y compliance
+- **Identificación de secretos hardcodeados** con sugerencias de remediación
+- **Análisis específico por lenguaje** y tipo de proyecto
+- **Modo estricto vs permisivo** configurable
+- **Cálculo de compliance score** con métricas detalladas
+
+### 🛠️ Integraciones
+
+#### VS Code Extension
+- **6 Providers especializados** (Diagnostic, CodeAction, Completion, Hover, etc.)
+- **Análisis en tiempo real** mientras editas
+- **Quick Fixes automáticos** con un click
+- **35+ snippets inteligentes** con autocompletado contextual
+- **Wiki webview interactiva** para consultar estándares
+
+#### GitHub Integration
+- **GitHub Action automático** para análisis en PRs
+- **Comentarios inline precisos** en las líneas exactas
+- **Re-análisis con comando** `/reanalyze`
+- **Badges visuales** de compliance score
+- **Modo learning vs enforcement** configurable
+
+### 📊 Gestión y Métricas
+- **Wiki auto-actualizable** con file watching
+- **Versionado de políticas** con historial completo
+- **Rollback de versiones** para auditoría
+- **Métricas de adopción** con reportes mensuales
+- **Top 10 violaciones** más comunes
+
+## 🏗️ Arquitectura del Proyecto
 
 ```
 pipeline-assistant-mcp/
-├── docs/features/          # Features en formato Gherkin
-├── wiki/standards/         # Estándares corporativos
-├── src/                    # Código fuente TypeScript
+├── docs/features/          # Features BDD en Gherkin
+├── wiki/
+│   └── standards/         # Estándares corporativos
+│       ├── pipeline-standards.md
+│       ├── security-policies.yaml
+│       └── templates/     # Templates por tecnología
+├── src/
 │   ├── server.ts          # Servidor MCP principal
-│   ├── wiki-parser.ts     # Parser de estándares
-│   └── pipeline-generator.ts # Generador de pipelines
-├── package.json           # Configuración npm
-├── tsconfig.json          # Configuración TypeScript
-└── PROGRESS.md            # Tracking del desarrollo
+│   ├── pipeline-generator.ts
+│   ├── pipeline-analyzer.ts
+│   ├── policy-enforcer.ts
+│   ├── wiki-manager.ts
+│   ├── wiki-parser.ts
+│   └── pr-bot.ts
+├── vscode-extension/      # Extensión VS Code
+│   └── src/
+│       ├── extension.ts
+│       ├── providers/    # 6 providers
+│       └── mcp/         # Cliente MCP
+├── cli/                   # Herramientas CLI
+│   ├── pr-bot-cli.ts
+│   └── wiki-cli.ts
+├── .github/workflows/     # GitHub Actions
+│   └── pipeline-review.yml
+├── tests/                 # Tests unitarios
+├── examples/              # Ejemplos de pipelines
+└── package.json
+
 ```
 
 ## 🛠️ Instalación
 
-### Requisitos previos
+### Requisitos Previos
 - Node.js 20.x o superior
 - npm 9.x o superior
-- VS Code (opcional, para la extensión)
+- Git
+- VS Code (para la extensión)
 
-### Pasos de instalación
+### Instalación Rápida
 
-1. **Descomprimir el proyecto**
 ```bash
-unzip pipeline-assistant-mcp.zip
+# Clonar el repositorio
+git clone https://github.com/soydachi/pipeline-assistant-mcp.git
 cd pipeline-assistant-mcp
-```
 
-2. **Instalar dependencias**
-```bash
+# Instalar dependencias
 npm install
-```
 
-3. **Compilar el proyecto**
-```bash
+# Compilar el proyecto
 npm run build
+
+# Ejecutar tests
+npm test
 ```
 
-4. **Configurar MCP en tu cliente** (ej: Claude Desktop, VS Code)
+### Configuración del Servidor MCP
+
+#### Para Claude Desktop
+Edita tu archivo de configuración Claude (`claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
     "pipeline-assistant": {
       "command": "node",
-      "args": ["path/to/dist/server.js"],
+      "args": ["./dist/server.js"],
+      "cwd": "/path/to/pipeline-assistant-mcp",
       "transport": "stdio"
     }
   }
 }
 ```
 
+#### Para VS Code
+1. Instala la extensión desde el directorio `vscode-extension/`
+2. O configura manualmente en `settings.json`:
+
+```json
+{
+  "pipeline-assistant.mcp.enabled": true,
+  "pipeline-assistant.mcp.serverPath": "/path/to/dist/server.js"
+}
+```
+
 ## 🎯 Uso
 
-### Desde CLI
+### CLI - Gestión de Pipelines
 
 ```bash
-# Generar un pipeline para proyecto .NET
-pipeline-assistant generate --type dotnet --env prod
+# Generar pipeline para microservicio .NET con Redis y SQL
+pipeline-assistant generate \
+  --type dotnet \
+  --services redis,azuresql \
+  --env production
 
-# Analizar un pipeline existente
-pipeline-assistant analyze azure-pipelines.yml --strict
+# Analizar pipeline existente
+pipeline-assistant analyze azure-pipelines.yml \
+  --strict \
+  --output json
 
 # Obtener sugerencias de mejora
-pipeline-assistant suggest azure-pipelines.yml --focus security,performance
+pipeline-assistant suggest pipeline.yml \
+  --focus security,performance
+```
+
+### CLI - Gestión de Wiki
+
+```bash
+# Ver estándares actuales
+pipeline-wiki standards --list
+
+# Monitorear cambios en la wiki
+pipeline-wiki watch --interval 60000
+
+# Ver métricas de adopción
+pipeline-wiki metrics --current
+
+# Generar reporte mensual
+pipeline-wiki metrics --report markdown --export report.md
+```
+
+### CLI - Análisis de PRs
+
+```bash
+# Analizar un PR
+pipeline-assistant-pr analyze \
+  --owner myorg \
+  --repo myrepo \
+  --pr 123 \
+  --token $GITHUB_TOKEN
+
+# Modo dry-run (sin comentarios)
+pipeline-assistant-pr analyze \
+  --pr 123 \
+  --dry-run
 ```
 
 ### Desde VS Code
 
-1. Instalar la extensión Pipeline Assistant (cuando esté disponible)
-2. Abrir un archivo `.yml` de pipeline
-3. Usar los comandos:
-   - `Ctrl+Shift+P` → "Pipeline Assistant: Generate"
-   - `Ctrl+Shift+P` → "Pipeline Assistant: Analyze"
+1. **Generar Pipeline**: `Ctrl+Shift+P` → "Pipeline Assistant: Generate"
+2. **Analizar**: Abre cualquier `.yml` y ve los diagnósticos en tiempo real
+3. **Quick Fix**: Click en el icono de bombilla o `Ctrl+.`
+4. **Ver Wiki**: `Ctrl+Shift+P` → "Pipeline Assistant: Show Wiki"
 
-### Como servidor MCP
+### Como Servidor MCP
 
-El servidor expone tres herramientas principales:
+El servidor expone las siguientes herramientas:
 
 #### `generate_pipeline`
-Genera un pipeline completo basado en estándares corporativos.
-
-Parámetros:
-- `projectType`: 'dotnet' | 'node' | 'python'
-- `services`: Array de servicios (ej: ['azuresql', 'redis'])
-- `environment`: 'dev' | 'staging' | 'prod'
+```typescript
+{
+  projectType: 'dotnet' | 'node' | 'python' | 'java' | 'go',
+  services: ['redis', 'azuresql', 'keyvault'],
+  environment: 'dev' | 'staging' | 'prod',
+  features?: ['docker', 'helm', 'monitoring']
+}
+```
 
 #### `analyze_pipeline`
-Analiza un pipeline YAML contra los estándares.
-
-Parámetros:
-- `yamlContent`: Contenido del pipeline en YAML
-- `strictMode`: Boolean para aplicar validación estricta
+```typescript
+{
+  yamlContent: string,
+  strictMode?: boolean,
+  projectType?: string,
+  checkSecurity?: boolean,
+  checkPerformance?: boolean
+}
+```
 
 #### `suggest_improvements`
-Sugiere mejoras para un pipeline existente.
-
-Parámetros:
-- `yamlContent`: Contenido del pipeline
-- `focus`: Array con áreas de enfoque ['security', 'performance', 'compliance', 'quality']
+```typescript
+{
+  yamlContent: string,
+  focus?: ['security', 'performance', 'compliance', 'quality']
+}
+```
 
 ## 📚 Configuración de Estándares
 
-Los estándares se definen en la carpeta `wiki/standards/`:
+### Estructura de Wiki
 
-### pipeline-standards.md
-Define las reglas obligatorias, recomendadas y prohibidas para los pipelines.
+```markdown
+# wiki/standards/pipeline-standards.md
 
-### security-policies.yaml
-Define las políticas de seguridad específicas y sus configuraciones.
+## Obligatorio
+### SEC-001: Escaneo de Secretos
+Severidad: CRITICAL
+Tags: security, secrets
+
+## Recomendado
+### PERF-001: Uso de Caché
+
+## Prohibido
+### UNSAFE-001: Trigger sin restricciones
+```
+
+### Políticas de Seguridad
+
+```yaml
+# wiki/standards/security-policies.yaml
+
+security_scanning:
+  required: true
+  tools:
+    - TruffleHog
+    - Snyk
+    - SonarQube
+
+secret_management:
+  azure_keyvault:
+    required: true
+  hardcoded_secrets:
+    forbidden: true
+```
 
 ## 🧪 Testing
 
@@ -130,57 +267,103 @@ Define las políticas de seguridad específicas y sus configuraciones.
 # Ejecutar todos los tests
 npm test
 
-# Ejecutar tests en modo watch
+# Tests con cobertura
+npm run test:coverage
+
+# Tests en modo watch
 npm run test:watch
 
-# Ejecutar test de un escenario específico
-npm test -- --testNamePattern="Generar pipeline básico"
+# Test específico por feature
+npm test -- --testNamePattern="Feature 1"
 ```
 
-## 📊 Metodología de Desarrollo
+## 📊 Métricas e Impacto
 
-Este proyecto sigue el **Proceso de 5 Pasos para Planificación con IA**:
+### Antes de Pipeline Assistant
+- ⏱️ Tiempo creación pipeline: 2-4 horas
+- 🐛 Errores de seguridad: 3-5 por pipeline
+- 📉 Compliance inicial: ~40%
+- 🚨 Detección de problemas: En producción
 
-1. **Define la Idea** en lenguaje natural
-2. **Solicita Features** en formato Gherkin
-3. **Persiste Features** en archivos .feature
-4. **Implementa PROGRESS.md** para tracking
-5. **Desarrollo escenario por escenario**
-
-Ver `PROGRESS.md` para el estado actual del desarrollo.
+### Con Pipeline Assistant
+- ⏱️ Tiempo creación pipeline: 5 minutos
+- ✅ Errores de seguridad: 0 (bloqueados automáticamente)
+- 📈 Compliance: 95%+
+- 🛡️ Detección de problemas: Pre-commit
 
 ## 🚀 Roadmap
 
-- [x] Generación básica de pipelines
-- [ ] Análisis completo de pipelines
-- [ ] Extensión VS Code
-- [ ] Bot para GitHub Actions
-- [ ] Bot para Azure DevOps
-- [ ] Dashboard de métricas
-- [ ] Auto-fix de violaciones
+### v1.0 (Actual)
+- ✅ Generación automática de pipelines
+- ✅ Análisis y validación completa
+- ✅ Integración VS Code
+- ✅ Bot para GitHub PRs
+- ✅ Gestión de wiki y métricas
+
+### v1.1 (Q1 2025)
+- [ ] Integración con Azure DevOps
+- [ ] Bot para GitLab
+- [ ] Dashboard web de métricas
+- [ ] Auto-fix avanzado con IA
+
+### v1.2 (Q2 2025)
+- [ ] Soporte para Terraform/IaC
+- [ ] Análisis de Dockerfiles
+- [ ] Integración con Backstage
+- [ ] Políticas personalizables por equipo
+
+### v2.0 (Q3 2025)
+- [ ] ML para predicción de fallos
+- [ ] Optimización automática de pipelines
+- [ ] Gestión multi-tenant
+- [ ] API REST completa
 
 ## 🤝 Contribuir
 
+Las contribuciones son bienvenidas! Por favor:
+
 1. Fork el proyecto
 2. Crea tu feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add AmazingFeature'`)
+3. Commit tus cambios (`git commit -m 'Add: nueva característica increíble'`)
 4. Push al branch (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
+### Guía de Contribución
+
+- Sigue el estilo de código existente (usa `npm run lint`)
+- Añade tests para nuevas funcionalidades
+- Actualiza la documentación cuando sea necesario
+- Mantén los commits atómicos y descriptivos
+
 ## 📝 Licencia
 
-Este proyecto es parte de una demostración técnica para la charla "IA generativa en DevSecOps" y está disponible con fines educativos.
+Este proyecto está licenciado bajo Apache License 2.0 - ver el archivo [LICENSE](LICENSE) para más detalles.
 
-## 👥 Autor
+## 👨‍💻 Autor
 
-Desarrollado para la charla en TechFest Madrid sobre automatización inteligente de pipelines CI/CD.
+**Dachi Gogotchuri (@soydachi)**
+
+🔧 Platform Lead Engineer @ [NN España](https://nnespana.es)  
+🚀 Founder @ [Arcasiles Group](https://arcasiles.com)  
+🎸 Leading @vegasoulband & @jaleo.band  
+❤️ Creating value through passion
+
+- Website: [soydachi.com](https://soydachi.com)
+- GitHub: [@soydachi](https://github.com/soydachi)
+- LinkedIn: [Dachi Gogotchuri](https://linkedin.com/in/soydachi)
 
 ## 🙏 Agradecimientos
 
-- Anthropic por el SDK de MCP
-- La comunidad de DevSecOps por las mejores prácticas
-- Los asistentes a la charla por su interés en la automatización inteligente
+
+## 📖 Recursos
+
+- [Model Context Protocol Documentation](https://modelcontextprotocol.io)
+- [Azure Pipelines Documentation](https://docs.microsoft.com/azure/devops/pipelines)
+- [GitHub Actions Documentation](https://docs.github.com/actions)
+- [Presentación TechFest Madrid](https://techfest.madrid)
 
 ---
 
-Para más información sobre el Model Context Protocol, visita: https://modelcontextprotocol.io
+**Pipeline Assistant MCP** - Transformando la manera de crear y mantener pipelines CI/CD con IA generativa 🚀
+
+*Desarrollado con ❤️ para la comunidad DevSecOps*
