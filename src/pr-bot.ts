@@ -1,7 +1,7 @@
 import { Octokit } from '@octokit/rest';
-import { PipelineAnalyzer } from '../pipeline-analyzer';
-import { WikiParser } from '../wiki-parser';
-import { PolicyEnforcer } from '../policy-enforcer';
+import { PipelineAnalyzer } from './pipeline-analyzer.js';
+import { WikiParser } from './wiki-parser.js';
+import { PolicyEnforcer } from './policy-enforcer.js';
 
 export interface PRAnalysisConfig {
   githubToken: string;
@@ -248,7 +248,7 @@ export class PRBot {
     };
   }
 
-  private detectProjectType(path: string, content: string): string | undefined {
+  private detectProjectType(path: string, content: string): 'dotnet' | 'node' | 'python' | undefined {
     if (content.includes('DotNetCoreCLI') || content.includes('dotnet')) {
       return 'dotnet';
     }

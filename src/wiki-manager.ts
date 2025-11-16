@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as yaml from 'yaml';
 import { EventEmitter } from 'events';
 import * as crypto from 'crypto';
-import { WikiParser } from './wiki-parser';
+import { WikiParser } from './wiki-parser.js';
 
 export interface WikiStandard {
   id: string;
@@ -109,7 +109,7 @@ export class WikiManager extends EventEmitter {
   private policyHistory: PolicyVersion[] = [];
   private metrics: AdoptionMetrics[] = [];
   private wikiPath: string;
-  private watchInterval: NodeJS.Timer | null = null;
+  private watchInterval: NodeJS.Timeout | null = null;
   private lastChecksum: string = '';
   private wikiParser: WikiParser;
 

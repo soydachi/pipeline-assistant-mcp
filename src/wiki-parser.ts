@@ -17,6 +17,12 @@ export interface Rule {
   example?: string;
 }
 
+interface PartialRule {
+  description?: string;
+  severity?: Rule['severity'];
+  example?: string;
+}
+
 export class WikiParser {
   private wikiPath: string;
   private standardsCache: Map<string, Standard> = new Map();
@@ -78,17 +84,17 @@ export class WikiParser {
   private extractRules(section: string, defaultSeverity: Rule['severity']): Rule[] {
     const rules: Rule[] = [];
     const lines = section.split('\n');
-    
-    let currentRule: Partial<Rule> | null = null;
-    
+
+    let currentRule: PartialRule | null = null;
+
     lines.forEach((line) => {
       if (line.match(/^###\s+\d+\.\s+/)) {
-        if (currentRule && currentRule.description) {
+        if (currentRule?.description) {
           rules.push({
             id: `RULE-${rules.length + 1}`,
             description: currentRule.description,
             severity: currentRule.severity || defaultSeverity,
-            example: currentRule.example,
+            example: currentRule.example || '',
           });
         }
         currentRule = {
@@ -103,17 +109,20 @@ export class WikiParser {
         currentRule.example += line + '\n';
       }
     });
-    
+
     // Agregar última regla
-    if (currentRule && currentRule.description) {
-      rules.push({
-        id: `RULE-${rules.length + 1}`,
-        description: currentRule.description,
-        severity: currentRule.severity || defaultSeverity,
-        example: currentRule.example,
-      });
+    if (currentRule) {
+      const rule = currentRule as PartialRule;
+      if (rule.description) {
+        rules.push({
+          id: `RULE-${rules.length + 1}`,
+          description: rule.description,
+          severity: rule.severity || defaultSeverity,
+          example: rule.example || '',
+        });
+      }
     }
-    
+
     return rules;
   }
 

@@ -113,7 +113,7 @@ export class PipelineAnalyzer {
     
     // Verificar compliance con políticas
     if (checkCompliance) {
-      await this.checkPolicyCompliance(pipeline, yamlContent, violations, warnings, projectType);
+      await this.checkPolicyCompliance(pipeline, yamlContent, violations, warnings, suggestions, projectType);
     }
     
     // Aplicar modo estricto si está habilitado
@@ -382,6 +382,7 @@ stages:
     yamlContent: string,
     violations: Violation[],
     warnings: Warning[],
+    suggestions: Suggestion[],
     projectType?: string
   ): Promise<void> {
     // Verificar compliance con políticas obligatorias
@@ -406,22 +407,24 @@ stages:
     });
     
     // Verificar estructura específica del tipo de proyecto
-    if (projectType) {
+    if (projectType && (projectType === 'dotnet' || projectType === 'node' || projectType === 'python')) {
       await this.checkProjectSpecificRequirements(
-        pipeline, 
-        yamlContent, 
-        violations, 
-        warnings, 
+        pipeline,
+        yamlContent,
+        violations,
+        warnings,
+        suggestions,
         projectType
       );
     }
   }
-  
+
   private async checkProjectSpecificRequirements(
     pipeline: any,
     yamlContent: string,
     violations: Violation[],
     warnings: Warning[],
+    suggestions: Suggestion[],
     projectType: 'dotnet' | 'node' | 'python'
   ): Promise<void> {
     switch (projectType) {
