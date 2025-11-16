@@ -409,10 +409,16 @@ ${policies.map(p => `          @{Id="${p.id}"; Name="${p.name}"; Severity="${p.s
     
     // Verificar que todas las políticas obligatorias estén presentes
     applicablePolicies.forEach(policy => {
-      const hasPolicyImplementation = policy.tools.some(tool => 
+      // Skip policies without tools (like compliance policies)
+      if (!policy.tools || !Array.isArray(policy.tools) || policy.tools.length === 0) {
+        result.skipped.push(policy);
+        return;
+      }
+
+      const hasPolicyImplementation = policy.tools.some(tool =>
         pipelineYaml.includes(tool.task)
       );
-      
+
       if (hasPolicyImplementation) {
         result.applied.push(policy);
       } else if (policy.mandatory) {

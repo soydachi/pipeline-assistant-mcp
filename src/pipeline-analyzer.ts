@@ -245,21 +245,50 @@ export class PipelineAnalyzer {
         /api[_-]?key\s*[:=]\s*["']([^"']+)["']/i,
         /token\s*[:=]\s*["']([^"']+)["']/i,
         /secret\s*[:=]\s*["']([^"']+)["']/i,
-        /connectionstring\s*[:=]\s*["'][^$\(][^"']+["']/i
+        /connectionstring\s*[:=]\s*["'][^$\(][^"']+["']/i,
+        // Azure Pipeline variable format: - name: password / value: "..."
+        /name:\s*(password|pwd|api[_-]?key|token|secret|connectionString)/i
       ];
-      
+
       dangerousPatterns.forEach(pattern => {
         const match = line.match(pattern);
         if (match && !line.includes('$(') && !line.includes('${')) {
-          violations.push({
-            type: 'HARDCODED_SECRET',
-            severity: 'CRITICAL',
-            line: index + 1,
-            column: match.index || 0,
-            message: 'Secreto hardcodeado detectado',
-            rule: 'NO_SECRETS',
-            suggestion: 'Use Azure Key Vault o variables de grupo para secretos',
-            code: `# En lugar de:
+          // For variable name patterns, check if next line has a hardcoded value
+          if (pattern.source.includes('name:')) {
+            const nextLine = lines[index + 1];
+            if (nextLine && /value:\s*["'][^$\(][^"']+["']/.test(nextLine) &&
+                !nextLine.includes('$(') && !nextLine.includes('${')) {
+              violations.push({
+                type: 'HARDCODED_SECRET',
+                severity: 'CRITICAL',
+                line: index + 1,
+                column: match.index || 0,
+                message: 'Secreto hardcodeado detectado',
+                rule: 'NO_SECRETS',
+                suggestion: 'Use Azure Key Vault o variables de grupo para secretos',
+                code: `# En lugar de:
+# ${line.trim()}
+# ${nextLine.trim()}
+# Use:
+variables:
+  - group: my-variable-group
+# O:
+- task: AzureKeyVault@2
+  inputs:
+    azureSubscription: 'ServiceConnection'
+    KeyVaultName: 'my-keyvault'`
+              });
+            }
+          } else {
+            violations.push({
+              type: 'HARDCODED_SECRET',
+              severity: 'CRITICAL',
+              line: index + 1,
+              column: match.index || 0,
+              message: 'Secreto hardcodeado detectado',
+              rule: 'NO_SECRETS',
+              suggestion: 'Use Azure Key Vault o variables de grupo para secretos',
+              code: `# En lugar de:
 # ${line.trim()}
 # Use:
 variables:
@@ -269,7 +298,8 @@ variables:
   inputs:
     azureSubscription: 'ServiceConnection'
     KeyVaultName: 'my-keyvault'`
-          });
+            });
+          }
         }
       });
       
@@ -337,11 +367,14 @@ variables:
     
     // Verificar paralelización
     if (pipeline.stages && pipeline.stages.length > 3) {
-      const hasParallelStages = pipeline.stages.some((stage: any) => 
-        !stage.dependsOn || Array.isArray(stage.dependsOn)
+      // Check if stages are strictly sequential (each depends on exactly one previous stage)
+      const stagesWithDeps = pipeline.stages.filter((stage: any) => stage.dependsOn);
+      const allSequential = stagesWithDeps.every((stage: any) =>
+        typeof stage.dependsOn === 'string'
       );
-      
-      if (!hasParallelStages) {
+
+      // If all stages with dependencies are sequential, suggest parallelization
+      if (allSequential && stagesWithDeps.length >= 3) {
         suggestions.push({
           type: 'PERFORMANCE',
           priority: 'LOW',
@@ -387,12 +420,17 @@ stages:
   ): Promise<void> {
     // Verificar compliance con políticas obligatorias
     const mandatoryPolicies = this.policyEnforcer.getMandatoryPolicies();
-    
+
     mandatoryPolicies.forEach(policy => {
-      const hasPolicyImplementation = policy.tools.some(tool => 
+      // Skip policies without tools (like compliance policies)
+      if (!policy.tools || !Array.isArray(policy.tools) || policy.tools.length === 0) {
+        return;
+      }
+
+      const hasPolicyImplementation = policy.tools.some(tool =>
         yamlContent.includes(tool.task)
       );
-      
+
       if (!hasPolicyImplementation) {
         violations.push({
           type: 'POLICY_VIOLATION',

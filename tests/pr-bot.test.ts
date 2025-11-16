@@ -1,12 +1,31 @@
 import { PRBot, PRAnalysisConfig, PRAnalysisResult } from '../src/pr-bot';
 import { Octokit } from '@octokit/rest';
+import { jest } from '@jest/globals';
 
 // Mock de Octokit
 jest.mock('@octokit/rest');
 
+type MockedOctokit = {
+  pulls: {
+    listFiles: jest.Mock<any>;
+    get: jest.Mock<any>;
+    createReview: jest.Mock<any>;
+  };
+  repos: {
+    getContent: jest.Mock<any>;
+    createCommitStatus: jest.Mock<any>;
+  };
+  issues: {
+    listComments: jest.Mock<any>;
+    createComment: jest.Mock<any>;
+    updateComment: jest.Mock<any>;
+    addLabels: jest.Mock<any>;
+  };
+};
+
 describe('PR Bot - Feature 4', () => {
   let bot: PRBot;
-  let mockOctokit: jest.Mocked<Octokit>;
+  let mockOctokit: MockedOctokit;
   
   const defaultConfig: PRAnalysisConfig = {
     githubToken: 'test-token',
@@ -38,7 +57,7 @@ describe('PR Bot - Feature 4', () => {
       },
     } as any;
 
-    (Octokit as jest.MockedClass<typeof Octokit>).mockImplementation(() => mockOctokit);
+    (Octokit as jest.MockedClass<typeof Octokit>).mockImplementation(() => mockOctokit as any);
     
     bot = new PRBot(defaultConfig);
   });
@@ -56,7 +75,7 @@ describe('PR Bot - Feature 4', () => {
       } as any);
 
       // Mock del contenido de archivos
-      mockOctokit.repos.getContent.mockImplementation(({ path }) => {
+      mockOctokit.repos.getContent.mockImplementation(({ path }: any) => {
         const content = `
 trigger: main
 stages:

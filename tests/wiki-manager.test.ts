@@ -1,6 +1,7 @@
 import { WikiManager } from '../src/wiki-manager';
 import * as fs from 'fs';
 import * as path from 'path';
+import { jest } from '@jest/globals';
 
 // Mock fs
 jest.mock('fs');
@@ -325,8 +326,8 @@ stages:
     it('debe detectar cambios entre versiones', () => {
       // Simular versión anterior
       const previousStandards = [
-        { id: 'std1', description: 'Standard 1', severity: 'HIGH' },
-        { id: 'std2', description: 'Standard 2', severity: 'LOW' }
+        { id: 'std1', description: 'Standard 1', severity: 'HIGH' as const, type: 'mandatory' as const },
+        { id: 'std2', description: 'Standard 2', severity: 'LOW' as const, type: 'mandatory' as const }
       ];
 
       wikiManager['policyHistory'] = [{
@@ -367,7 +368,7 @@ stages:
         changes: ['Initial'],
         justification: 'Initial version',
         standards: [
-          { id: 'std1', description: 'Original', severity: 'LOW' }
+          { id: 'std1', description: 'Original', severity: 'LOW' as const, type: 'mandatory' as const }
         ],
         checksum: 'v1'
       };

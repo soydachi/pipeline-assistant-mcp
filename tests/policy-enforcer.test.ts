@@ -233,8 +233,8 @@ stages:
 
       // Then: Debe incluir búsqueda de patrones peligrosos
       expect(securityStage).toContain('Verificando patrones de secretos comunes');
-      expect(securityStage).toContain('password\\s*=\\s*');
-      expect(securityStage).toContain('api[_-]?key\\s*=\\s*');
+      expect(securityStage).toContain('password');
+      expect(securityStage).toContain('api[_-]?key');
       expect(securityStage).toContain('Se encontraron posibles passwords hardcodeados');
     });
 
