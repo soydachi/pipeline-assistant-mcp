@@ -1,6 +1,7 @@
 import { PolicyEnforcer } from '../src/policy-enforcer';
 import { PipelineGenerator } from '../src/pipeline-generator';
 import { WikiParser } from '../src/wiki-parser';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 describe('Policy Enforcer - Políticas de Seguridad Obligatorias', () => {
   let enforcer: PolicyEnforcer;

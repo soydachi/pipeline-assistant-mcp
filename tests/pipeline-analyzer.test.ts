@@ -1,5 +1,6 @@
 import { PipelineAnalyzer } from '../src/pipeline-analyzer';
 import { WikiParser } from '../src/wiki-parser';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 describe('Pipeline Analyzer - Feature 2', () => {
   let analyzer: PipelineAnalyzer;

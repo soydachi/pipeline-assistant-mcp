@@ -1,5 +1,6 @@
 import { PipelineGenerator } from '../src/pipeline-generator';
 import { WikiParser } from '../src/wiki-parser';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 describe('Pipeline Generator - Service Integration', () => {
   let generator: PipelineGenerator;
