@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { PRBot, PRAnalysisConfig, runPRAnalysis } from '../src/pr-bot';
+import { PRBot, PRAnalysisConfig, runPRAnalysis } from '../src/pr-bot.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';

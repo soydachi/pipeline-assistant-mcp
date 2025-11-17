@@ -1,0 +1,77 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: database-secrets
+  - group: api-credentials
+
+stages:
+- stage: Security
+  displayName: 'Security Scanning'
+  jobs:
+  - job: SecretScan
+    displayName: 'Secret Detection'
+    steps:
+    - task: TruffleHog@1
+      displayName: 'Scan for Secrets'
+      inputs:
+        failOnHighSeverity: true
+
+- stage: Build
+  displayName: 'Build Application'
+  dependsOn: Security
+  jobs:
+  - job: BuildJob
+    displayName: 'Build and Test'
+    steps:
+    - script: |
+        echo "Starting build..."
+        npm ci
+        npm run build
+      displayName: 'Build Application'
+
+    - script: |
+        npm test
+      displayName: 'Run Tests'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/test-results.xml'
+
+- stage: Deploy
+  displayName: 'Deploy to Production'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProd
+    displayName: 'Production Deployment'
+    environment: 'production'
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - task: ManualValidation@0
+            displayName: 'Approval Required'
+            inputs:
+              notifyUsers: 'devops-team@company.com'
+
+        deploy:
+          steps:
+          - task: AzureKeyVault@2
+            displayName: 'Get Secrets from Key Vault'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              KeyVaultName: 'my-keyvault'
+
+          - script: |
+              curl -X POST https://api.ejemplo.com \
+                -H "Authorization: Bearer $(API_KEY)"
+            displayName: 'Deploy Application'

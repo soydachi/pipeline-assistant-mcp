@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { WikiManager } from '../src/wiki-manager';
+import { WikiManager } from '../src/wiki-manager.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';

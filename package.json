@@ -2,7 +2,7 @@
   "name": "@soydachi/pipeline-assistant-mcp",
   "version": "1.0.0",
   "description": "MCP server for intelligent CI/CD pipeline assistance with generative AI",
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "type": "module",
   "bin": {
     "pipeline-assistant": "./dist/cli/pipeline-assistant.js",
@@ -14,7 +14,7 @@
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
     "dev": "tsc --watch",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -27,7 +27,7 @@
     "server": {
       "command": "node",
       "args": [
-        "dist/server.js"
+        "dist/src/server.js"
       ],
       "transport": "stdio"
     }
