@@ -144,9 +144,7 @@ function registerCommands(context: vscode.ExtensionContext) {
                         const pipeline = await mcpClient.generatePipeline({
                             projectType,
                             services,
-                            environment,
-                            usesDocker,
-                            enforceAllPolicies: true
+                            environment
                         });
 
                         progress.report({ increment: 50, message: 'Pipeline generado, creando archivo...' });
@@ -250,7 +248,7 @@ function registerCommands(context: vscode.ExtensionContext) {
             // Crear un nuevo documento con las sugerencias
             const suggestionsDoc = await vscode.workspace.openTextDocument({
                 language: 'markdown',
-                content: formatSuggestions(suggestions)
+                content: formatSuggestions(suggestions.suggestions)
             });
 
             await vscode.window.showTextDocument(suggestionsDoc, vscode.ViewColumn.Beside);
@@ -339,8 +337,7 @@ async function analyzeDocument(document: vscode.TextDocument) {
     // Analizar con MCP
     const analysis = await mcpClient.analyzePipeline(
         document.getText(),
-        strictMode,
-        projectType
+        strictMode
     );
     
     // Actualizar diagnósticos
