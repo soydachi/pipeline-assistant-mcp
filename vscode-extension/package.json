@@ -7,12 +7,16 @@
   "engines": {
     "vscode": "^1.80.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soydachi/pipeline-assistant-mcp.git"
+  },
+  "license": "Apache-2.0",
   "categories": [
     "Programming Languages",
     "Linters",
     "Other"
   ],
-  "icon": "images/icon.png",
   "activationEvents": [
     "onLanguage:yaml",
     "onCommand:pipelineAssistant.generate",
