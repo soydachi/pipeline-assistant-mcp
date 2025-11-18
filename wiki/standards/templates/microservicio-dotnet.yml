@@ -12,10 +12,14 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  buildConfiguration: 'Release'
-  dotnetVersion: '8.x'
-  dockerRegistry: 'myacr.azurecr.io'
-  imageRepository: 'myapp'
+  - name: buildConfiguration
+    value: 'Release'
+  - name: dotnetVersion
+    value: '8.x'
+  - name: dockerRegistry
+    value: 'myacr.azurecr.io'
+  - name: imageRepository
+    value: 'myapp'
   - group: common-variables
   - group: database-secrets
 
@@ -42,15 +46,18 @@ stages:
   - job: SecretScan
     displayName: 'Secret Detection'
     steps:
-    - task: TruffleHog@1
-      displayName: 'Scan for Secrets'
-      inputs:
-        failOnHighSeverity: true
+    - script: |
+        docker run --rm -v "$(Build.SourcesDirectory):/src" \
+          trufflesecurity/trufflehog:latest \
+          filesystem /src \
+          --fail \
+          --no-update
+      displayName: 'TruffleHog Secret Scan'
 
   - job: SAST
     displayName: 'Static Analysis'
     steps:
-    - task: SonarQubePrepare@5
+    - task: SonarQubePrepare@6
       displayName: 'Prepare SonarQube'
       inputs:
         SonarQube: 'SonarQube-Connection'
@@ -63,10 +70,10 @@ stages:
         command: 'build'
         arguments: '--configuration $(buildConfiguration)'
 
-    - task: SonarQubeAnalyze@5
+    - task: SonarQubeAnalyze@6
       displayName: 'Run SonarQube Analysis'
 
-    - task: SonarQubePublish@5
+    - task: SonarQubePublish@6
       displayName: 'Publish Quality Gate'
       inputs:
         pollingTimeoutSec: '300'
@@ -74,10 +81,13 @@ stages:
   - job: DependencyScan
     displayName: 'Dependency Scanning'
     steps:
-    - task: WhiteSource@21
-      displayName: 'WhiteSource Scan'
+    - task: SnykSecurityScan@1
+      displayName: 'Snyk Security Scan'
       inputs:
-        cwd: '$(System.DefaultWorkingDirectory)'
+        serviceConnectionEndpoint: 'Snyk-Connection'
+        testType: 'app'
+        severityThreshold: 'high'
+        failOnIssues: true
 
 - stage: Build
   displayName: 'Build Application'
@@ -142,12 +152,13 @@ stages:
           $(Build.BuildId)
           latest
 
-    - task: Trivy@1
-      displayName: 'Scan Docker Image'
-      inputs:
-        image: '$(imageRepository):$(Build.BuildId)'
-        exitCode: 1
-        severity: 'CRITICAL,HIGH'
+    - script: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:latest image \
+          --exit-code 1 \
+          --severity CRITICAL,HIGH \
+          $(imageRepository):$(Build.BuildId)
+      displayName: 'Trivy Container Scan'
 
     - task: Docker@2
       displayName: 'Push to Registry'
@@ -183,10 +194,9 @@ stages:
         testResultsFormat: 'VSTest'
         testResultsFiles: '**/*.trx'
 
-    - task: PublishCodeCoverageResults@1
+    - task: PublishCodeCoverageResults@2
       displayName: 'Publish Code Coverage'
       inputs:
-        codeCoverageTool: 'Cobertura'
         summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
 
   - job: IntegrationTests

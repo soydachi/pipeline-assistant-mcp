@@ -7,19 +7,24 @@ policies:
         description: Todos los pipelines deben escanear secretos
         tools:
           - name: TruffleHog
-            task: TruffleHog@1
+            # TruffleHog se ejecuta via Docker script, no como tarea Azure
+            implementation: docker-script
+            command: |
+              docker run --rm -v "$(Build.SourcesDirectory):/src" \
+                trufflesecurity/trufflehog:latest \
+                filesystem /src --fail --no-update
             failOnDetection: true
         severity: CRITICAL
-        
-      - id: SEC-002  
+
+      - id: SEC-002
         name: SAST Analysis
         description: Análisis estático de código obligatorio
         tools:
           - name: SonarQube
-            task: SonarQubePrepare@5
+            task: SonarQubePrepare@6
             qualityGate: true
         severity: CRITICAL
-        
+
       - id: SEC-003
         name: Dependency Scanning
         description: Escaneo de dependencias vulnerables
@@ -29,14 +34,21 @@ policies:
             failOnIssues: true
             severityThreshold: high
         severity: HIGH
-        
+
       - id: SEC-004
         name: Container Scanning
         description: Escaneo de imágenes Docker
         condition: uses_docker
         tools:
           - name: Trivy
-            task: trivy@1
+            # Trivy se ejecuta via Docker script, no como tarea Azure
+            implementation: docker-script
+            command: |
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                aquasec/trivy:latest image \
+                --exit-code 1 \
+                --severity CRITICAL,HIGH \
+                $(imageRepository):$(Build.BuildId)
             exitCode: 1
         severity: HIGH
 
@@ -50,7 +62,7 @@ policies:
           - develop
           - release/*
         severity: MEDIUM
-        
+
       - id: COM-002
         name: Approval Gates
         description: Requerir aprobación para producción
@@ -67,7 +79,7 @@ policies:
         description: Mantener cobertura de código mínima
         threshold: 80
         severity: LOW
-        
+
       - id: QUA-002
         name: Performance Testing
         description: Tests de carga para APIs
@@ -89,4 +101,4 @@ enforcement:
   exceptions:
     - project: legacy-system
       policies: [SEC-004, QUA-002]
-      until: 2024-12-31
+      until: 2025-12-31

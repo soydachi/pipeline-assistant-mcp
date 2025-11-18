@@ -385,15 +385,15 @@ ${this.getRequiredSecretsForServices(services)}
       vmImage: 'ubuntu-latest'
     steps:
     # Escaneo de secretos (Obligatorio SEC-001)
-    - task: TruffleHog@1
-      displayName: 'Escanear secretos en código'
-      inputs:
-        path: '$(Build.SourcesDirectory)'
-        failOnSecrets: true
+    - script: |
+        docker run --rm -v "$(Build.SourcesDirectory):/src" \\
+          trufflesecurity/trufflehog:latest \\
+          filesystem /src --fail --no-update
+      displayName: 'TruffleHog Secret Scan'
       continueOnError: false
-      
+
     # SAST con SonarQube (Obligatorio SEC-002)
-    - task: SonarQubePrepare@5
+    - task: SonarQubePrepare@6
       displayName: 'Preparar análisis SonarQube'
       inputs:
         SonarQube: 'SonarQubeServiceConnection'
@@ -401,11 +401,11 @@ ${this.getRequiredSecretsForServices(services)}
         configMode: 'manual'
         cliProjectKey: '$(Build.Repository.Name)'
         cliProjectName: '$(Build.Repository.Name)'
-        
-    - task: SonarQubeAnalyze@5
+
+    - task: SonarQubeAnalyze@6
       displayName: 'Ejecutar análisis SonarQube'
-      
-    - task: SonarQubePublish@5
+
+    - task: SonarQubePublish@6
       displayName: 'Publicar resultados SonarQube'
       inputs:
         pollingTimeoutSec: '300'

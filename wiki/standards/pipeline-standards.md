@@ -12,15 +12,64 @@ Todo pipeline DEBE contener los siguientes stages en este orden:
 
 ### 2. Análisis de Seguridad
 Es obligatorio incluir las siguientes herramientas:
-- **TruffleHog**: Escaneo de secretos en el código
-- **SonarQube**: Análisis estático de código (SAST)
-- **Snyk/WhiteSource**: Análisis de dependencias vulnerables
-- **Trivy**: Escaneo de imágenes Docker (si aplica)
+
+#### Secret Scanning
+- **TruffleHog** (via Docker): Escaneo de secretos en el código
+```yaml
+- script: |
+    docker run --rm -v "$(Build.SourcesDirectory):/src" \
+      trufflesecurity/trufflehog:latest \
+      filesystem /src --fail --no-update
+  displayName: 'TruffleHog Secret Scan'
+```
+
+#### Static Analysis (SAST)
+- **SonarQube**: Análisis estático de código
+```yaml
+- task: SonarQubePrepare@6
+  inputs:
+    SonarQube: 'SonarQube-Connection'
+    scannerMode: 'MSBuild'
+    projectKey: 'my-project'
+- task: SonarQubeAnalyze@6
+- task: SonarQubePublish@6
+```
+
+#### Dependency Scanning
+- **Snyk**: Análisis de dependencias vulnerables
+```yaml
+- task: SnykSecurityScan@1
+  inputs:
+    serviceConnectionEndpoint: 'Snyk-Connection'
+    testType: 'app'
+    severityThreshold: 'high'
+    failOnIssues: true
+```
+
+#### Container Scanning (si aplica)
+- **Trivy** (via Docker): Escaneo de imágenes Docker
+```yaml
+- script: |
+    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+      aquasec/trivy:latest image \
+      --exit-code 1 \
+      --severity CRITICAL,HIGH \
+      $(imageRepository):$(Build.BuildId)
+  displayName: 'Trivy Container Scan'
+```
 
 ### 3. Variables y Secretos
 - PROHIBIDO hardcodear credenciales, usar Azure Key Vault
 - Todas las connection strings deben venir de variable groups
 - Usar service connections para autenticación con Azure
+- Formato correcto de variables con grupos:
+```yaml
+variables:
+  - name: buildConfiguration
+    value: 'Release'
+  - group: common-variables
+  - group: database-secrets
+```
 
 ## Recomendado
 
@@ -33,6 +82,10 @@ Es obligatorio incluir las siguientes herramientas:
 - Configurar notificaciones de fallo a Teams/Slack
 - Incluir dashboards de métricas de pipeline
 
+### 3. Code Coverage
+- Publicar resultados de cobertura
+- Mantener mínimo 80% de cobertura
+
 ## Prohibido
 
 ### 1. Malas Prácticas
@@ -40,6 +93,13 @@ Es obligatorio incluir las siguientes herramientas:
 - NO ejecutar deployments sin approval gates en producción
 - NO deshabilitar análisis de seguridad con `continueOnError: true`
 - NO usar versiones no específicas de tasks (usar @2, @3, etc)
+- NO mezclar formato escalar y lista en variables
+
+### 2. Tareas Inválidas
+Las siguientes tareas NO existen en Azure DevOps:
+- `TruffleHog@1` - Usar script con Docker
+- `Trivy@1` - Usar script con Docker
+- `Snyk@1` - Nombre correcto: `SnykSecurityScan@1`
 
 ## Templates por Tecnología
 
@@ -49,8 +109,10 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  buildConfiguration: 'Release'
-  dotnetVersion: '8.x'
+  - name: buildConfiguration
+    value: 'Release'
+  - name: dotnetVersion
+    value: '8.x'
 
 steps:
 - task: UseDotNet@2
@@ -74,10 +136,14 @@ steps:
 pool:
   vmImage: 'ubuntu-latest'
 
+variables:
+  - name: nodeVersion
+    value: '20.x'
+
 steps:
 - task: NodeTool@0
   inputs:
-    versionSpec: '20.x'
+    versionSpec: $(nodeVersion)
 - task: Cache@2
   inputs:
     key: 'npm | "$(Agent.OS)" | package-lock.json'
@@ -93,10 +159,14 @@ steps:
 pool:
   vmImage: 'ubuntu-latest'
 
+variables:
+  - name: pythonVersion
+    value: '3.11'
+
 steps:
 - task: UsePythonVersion@0
   inputs:
-    versionSpec: '3.11'
+    versionSpec: $(pythonVersion)
 - script: |
     python -m pip install --upgrade pip
     pip install -r requirements.txt

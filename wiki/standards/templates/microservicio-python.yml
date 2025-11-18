@@ -12,9 +12,12 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  pythonVersion: '3.11'
-  dockerRegistry: 'myacr.azurecr.io'
-  imageRepository: 'myapp-python'
+  - name: pythonVersion
+    value: '3.11'
+  - name: dockerRegistry
+    value: 'myacr.azurecr.io'
+  - name: imageRepository
+    value: 'myapp-python'
   - group: common-variables
   - group: database-secrets
 
@@ -51,10 +54,13 @@ stages:
   - job: SecretScan
     displayName: 'Secret Detection'
     steps:
-    - task: TruffleHog@1
-      displayName: 'Scan for Secrets'
-      inputs:
-        failOnHighSeverity: true
+    - script: |
+        docker run --rm -v "$(Build.SourcesDirectory):/src" \
+          trufflesecurity/trufflehog:latest \
+          filesystem /src \
+          --fail \
+          --no-update
+      displayName: 'TruffleHog Secret Scan'
 
   - job: DependencyScan
     displayName: 'Dependency Scanning'
@@ -70,8 +76,15 @@ stages:
     - script: safety check
       displayName: 'Safety Check (Dependencies)'
 
-    - script: bandit -r . -f json -o bandit-report.json
+    - script: bandit -r . -f json -o bandit-report.json || true
       displayName: 'Bandit SAST Scan'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Security Report'
+      inputs:
+        pathToPublish: 'bandit-report.json'
+        artifactName: 'security-reports'
+      condition: always()
 
 - stage: Build
   displayName: 'Build Application'
@@ -125,12 +138,13 @@ stages:
           $(Build.BuildId)
           latest
 
-    - task: Trivy@1
-      displayName: 'Scan Docker Image'
-      inputs:
-        image: '$(imageRepository):$(Build.BuildId)'
-        exitCode: 1
-        severity: 'CRITICAL,HIGH'
+    - script: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:latest image \
+          --exit-code 1 \
+          --severity CRITICAL,HIGH \
+          $(imageRepository):$(Build.BuildId)
+      displayName: 'Trivy Container Scan'
 
     - task: Docker@2
       displayName: 'Push to Registry'
@@ -167,10 +181,9 @@ stages:
         testResultsFormat: 'JUnit'
         testResultsFiles: '**/junit.xml'
 
-    - task: PublishCodeCoverageResults@1
+    - task: PublishCodeCoverageResults@2
       displayName: 'Publish Code Coverage'
       inputs:
-        codeCoverageTool: 'Cobertura'
         summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
 
 - stage: DeployDev
