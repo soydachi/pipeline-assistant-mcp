@@ -6,6 +6,7 @@ import { WikiParser } from './wiki-parser.js';
 import { PipelineGenerator } from './pipeline-generator.js';
 import { PipelineAnalyzer } from './pipeline-analyzer.js';
 import { createLogger } from './utils/logger.js';
+import { getContainer, type Container } from './container.js';
 import {
   GeneratePipelineArgsSchema,
   AnalyzePipelineArgsSchema,
@@ -15,24 +16,29 @@ import {
   type Warning,
   type Suggestion
 } from './utils/validation.js';
+import { SCORE_THRESHOLDS } from './utils/formatting.js';
+import { APP } from './utils/constants.js';
 
 const logger = createLogger('MCP-Server');
 
 class PipelineAssistantServer {
   private server: Server;
+  private container: Container;
   private wikiParser: WikiParser;
   private generator: PipelineGenerator;
   private analyzer: PipelineAnalyzer;
 
   constructor() {
-    this.wikiParser = new WikiParser('./wiki/standards');
-    this.generator = new PipelineGenerator(this.wikiParser);
-    this.analyzer = new PipelineAnalyzer(this.wikiParser);
+    // Use DI container for service management
+    this.container = getContainer();
+    this.wikiParser = this.container.getWikiParser();
+    this.generator = this.container.getPipelineGenerator();
+    this.analyzer = this.container.getPipelineAnalyzer();
 
     this.server = new Server(
       {
-        name: 'pipeline-assistant',
-        version: '1.0.0',
+        name: APP.NAME,
+        version: APP.VERSION,
       },
       {
         capabilities: {
@@ -287,9 +293,9 @@ class PipelineAssistantServer {
     let response = '# 📋 Análisis de Pipeline\n\n';
 
     // Score y resumen
-    const scoreEmoji = analysis.score >= 80 ? '🟢' :
-                       analysis.score >= 60 ? '🟡' :
-                       analysis.score >= 40 ? '🟠' : '🔴';
+    const scoreEmoji = analysis.score >= SCORE_THRESHOLDS.GOOD ? '🟢' :
+                       analysis.score >= SCORE_THRESHOLDS.FAIR ? '🟡' :
+                       analysis.score >= SCORE_THRESHOLDS.POOR ? '🟠' : '🔴';
 
     response += `## Score de Compliance: ${scoreEmoji} ${analysis.score}%\n\n`;
 
@@ -406,8 +412,8 @@ class PipelineAssistantServer {
     if (analysis.summary.highCount > 0) {
       response += '2. **🟠 IMPORTANTE**: Abordar las violaciones altas antes del próximo release\n';
     }
-    if (analysis.score < 60) {
-      response += '3. **📈 MEJORA**: Implementar las sugerencias para alcanzar un score mínimo del 80%\n';
+    if (analysis.score < SCORE_THRESHOLDS.FAIR) {
+      response += `3. **📈 MEJORA**: Implementar las sugerencias para alcanzar un score mínimo del ${SCORE_THRESHOLDS.GOOD}%\n`;
     }
     
     // Footer con enlace a documentación

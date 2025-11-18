@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { PipelineGenerator } from '../src/pipeline-generator.js';
-import { PipelineAnalyzer } from '../src/pipeline-analyzer.js';
-import { WikiParser } from '../src/wiki-parser.js';
 import { readFileSync, writeFileSync } from 'fs';
 import chalk from 'chalk';
+import { getContainer } from '../src/container.js';
 
 const program = new Command();
 
@@ -28,8 +26,10 @@ program
       console.log(chalk.gray(`  Type: ${options.type}`));
       console.log(chalk.gray(`  Environment: ${options.env}`));
 
-      const wikiParser = new WikiParser('./wiki/standards');
-      const generator = new PipelineGenerator(wikiParser);
+      // Use DI container for service management
+      const container = getContainer();
+      const wikiParser = container.getWikiParser();
+      const generator = container.getPipelineGenerator();
 
       const services = options.services
         ? options.services.split(',').map((s: string) => s.trim())
@@ -85,8 +85,10 @@ program
       console.log(chalk.gray(`  File: ${options.file}`));
 
       const content = readFileSync(options.file, 'utf-8');
-      const wikiParser = new WikiParser('./wiki/standards');
-      const analyzer = new PipelineAnalyzer(wikiParser);
+
+      // Use DI container for service management
+      const container = getContainer();
+      const analyzer = container.getPipelineAnalyzer();
 
       // Load custom config if provided
       if (options.config) {
@@ -184,8 +186,11 @@ program
       console.log(chalk.gray(`  Focus: ${options.focus}`));
 
       const content = readFileSync(options.file, 'utf-8');
-      const wikiParser = new WikiParser('./wiki/standards');
-      const analyzer = new PipelineAnalyzer(wikiParser);
+
+      // Use DI container for service management
+      const container = getContainer();
+      const analyzer = container.getPipelineAnalyzer();
+
       const result = await analyzer.analyze(content, { strictMode: false });
 
       console.log(chalk.cyan('\n📝 Improvement Suggestions'));

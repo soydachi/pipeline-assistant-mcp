@@ -3,6 +3,13 @@ import { PipelineAnalyzer } from './pipeline-analyzer.js';
 import { WikiParser } from './wiki-parser.js';
 import { PolicyEnforcer } from './policy-enforcer.js';
 import { createLogger } from './utils/logger.js';
+import { getContainer } from './container.js';
+import {
+  getScoreEmoji,
+  getSeverityIcon,
+  getBadgeColor,
+  SCORE_THRESHOLDS,
+} from './utils/formatting.js';
 
 const logger = createLogger('PRBot');
 
@@ -54,10 +61,12 @@ export class PRBot {
     this.octokit = new Octokit({
       auth: config.githubToken,
     });
-    
-    this.wikiParser = new WikiParser('./wiki/standards');
-    this.analyzer = new PipelineAnalyzer(this.wikiParser);
-    this.policyEnforcer = new PolicyEnforcer(this.wikiParser);
+
+    // Use DI container for service management
+    const container = getContainer();
+    this.wikiParser = container.getWikiParser();
+    this.analyzer = container.getPipelineAnalyzer();
+    this.policyEnforcer = container.getPolicyEnforcer();
   }
 
   async analyzePR(): Promise<PRAnalysisResult> {
@@ -332,7 +341,7 @@ export class PRBot {
   }
 
   private generateMainComment(analysis: PRAnalysisResult): string {
-    const emoji = this.getScoreEmoji(analysis.overallScore);
+    const emoji = getScoreEmoji(analysis.overallScore);
     const status = this.getStatusText(analysis);
     
     let comment = `## 🔍 Pipeline Assistant Analysis\n\n`;
@@ -375,7 +384,7 @@ export class PRBot {
         if (file.violations.length > 0) {
           comment += '**Violations:**\n';
           for (const violation of file.violations.slice(0, 5)) {
-            comment += `- ${this.getSeverityIcon(violation.severity)} **${violation.type}**: ${violation.message}\n`;
+            comment += `- ${getSeverityIcon(violation.severity)} **${violation.type}**: ${violation.message}\n`;
           }
           if (file.violations.length > 5) {
             comment += `- _...and ${file.violations.length - 5} more_\n`;
@@ -433,7 +442,7 @@ export class PRBot {
   }
 
   private generateInlineComment(issue: any): string {
-    const icon = this.getSeverityIcon(issue.severity);
+    const icon = getSeverityIcon(issue.severity);
     let comment = `**${icon} ${issue.type}**\n\n`;
     comment += `${issue.message}\n\n`;
     
@@ -567,28 +576,7 @@ export class PRBot {
     );
   }
 
-  private getScoreEmoji(score: number): string {
-    if (score >= 90) return '🟢';
-    if (score >= 80) return '🟢';
-    if (score >= 60) return '🟡';
-    if (score >= 40) return '🟠';
-    return '🔴';
-  }
-
-  private getSeverityIcon(severity: string): string {
-    switch (severity) {
-      case 'CRITICAL':
-        return '🔴';
-      case 'HIGH':
-        return '🟠';
-      case 'MEDIUM':
-        return '🟡';
-      case 'LOW':
-        return '🟢';
-      default:
-        return '⚪';
-    }
-  }
+  // Using shared formatting utilities from utils/formatting.ts
 
   private getStatusText(analysis: PRAnalysisResult): string {
     if (analysis.summary.criticalCount > 0) {
@@ -604,19 +592,14 @@ export class PRBot {
   }
 
   private generateBadges(analysis: PRAnalysisResult): string {
-    const scoreBadge = `![Compliance](https://img.shields.io/badge/compliance-${analysis.overallScore}%25-${this.getBadgeColor(analysis.overallScore)})`;
+    const scoreBadge = `![Compliance](https://img.shields.io/badge/compliance-${analysis.overallScore}%25-${getBadgeColor(analysis.overallScore)})`;
     const criticalBadge = `![Critical](https://img.shields.io/badge/critical-${analysis.summary.criticalCount}-${analysis.summary.criticalCount > 0 ? 'red' : 'green'})`;
     const highBadge = `![High](https://img.shields.io/badge/high-${analysis.summary.highCount}-${analysis.summary.highCount > 0 ? 'orange' : 'green'})`;
-    
+
     return `${scoreBadge} ${criticalBadge} ${highBadge}`;
   }
 
-  private getBadgeColor(score: number): string {
-    if (score >= 80) return 'green';
-    if (score >= 60) return 'yellow';
-    if (score >= 40) return 'orange';
-    return 'red';
-  }
+  // getBadgeColor is now imported from utils/formatting.ts
 }
 
 // CLI para testing local

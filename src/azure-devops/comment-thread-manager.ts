@@ -26,6 +26,7 @@ import type { AzureDevOpsConfig, PullRequestInfo } from './types.js';
 import type { AnalysisResult, Violation, Warning, Suggestion } from '../pipeline-analyzer.js';
 import type { PRAnalysisResult } from './pr-bot.js';
 import { createLogger } from '../utils/logger.js';
+import { getScoreEmoji, SCORE_THRESHOLDS } from '../utils/formatting.js';
 
 const logger = createLogger('CommentThreadManager');
 
@@ -377,7 +378,7 @@ export class CommentThreadManager {
 
     // Header con score si está habilitado
     if (options.includeScore) {
-      const scoreEmoji = this.getScoreEmoji(analysis.score);
+      const scoreEmoji = getScoreEmoji(analysis.score);
       parts.push(`## ${scoreEmoji} Pipeline Analysis - ${options.fileName}`);
       parts.push(`**Compliance Score:** ${analysis.score}/100\n`);
     } else {
@@ -480,15 +481,7 @@ export class CommentThreadManager {
     return grouped;
   }
 
-  /**
-   * Obtiene emoji según el score
-   */
-  private getScoreEmoji(score: number): string {
-    if (score >= 90) return '✅';
-    if (score >= 75) return '⚠️';
-    if (score >= 50) return '🟠';
-    return '🔴';
-  }
+  // getScoreEmoji is now imported from utils/formatting.ts
 
   /**
    * Logging estructurado
