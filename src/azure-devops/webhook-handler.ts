@@ -391,11 +391,31 @@ export class WebhookHandler {
       return false;
     }
 
-    // TODO: Implementar validación de firma HMAC-SHA256
-    // La implementación real dependería del formato de firma de Azure DevOps
+    // Implement HMAC-SHA256 signature validation
+    // Azure DevOps sends signature in format: sha256=<hash>
+    const crypto = require('crypto');
+    const payloadString = JSON.stringify(payload);
+    const expectedSignature = 'sha256=' + crypto
+      .createHmac('sha256', this.options.webhookSecret)
+      .update(payloadString, 'utf8')
+      .digest('hex');
 
-    this.log('warn', 'Webhook signature validation not fully implemented');
-    return true; // Temporalmente aceptar todo
+    // Use timing-safe comparison to prevent timing attacks
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+
+    if (signatureBuffer.length !== expectedBuffer.length) {
+      this.log('warn', 'Webhook signature length mismatch');
+      return false;
+    }
+
+    const isValid = crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+
+    if (!isValid) {
+      this.log('warn', 'Webhook signature validation failed');
+    }
+
+    return isValid;
   }
 
   /**

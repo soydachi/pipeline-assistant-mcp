@@ -83,7 +83,12 @@ export class AzureDevOpsConfigManager {
    * @throws ConfigValidationError si faltan campos requeridos
    */
   loadFromEnv(): AzureDevOpsConfig {
-    console.log('Loading Azure DevOps config from environment variables...');
+    // Validate enforcement mode
+    const envMode = process.env.AZDO_ENFORCEMENT_MODE;
+    const validModes: Array<'learning' | 'enforcement'> = ['learning', 'enforcement'];
+    const enforcementMode = envMode && validModes.includes(envMode as 'learning' | 'enforcement')
+      ? envMode as 'learning' | 'enforcement'
+      : DEFAULT_CONFIG.enforcementMode;
 
     const config: Partial<AzureDevOpsConfig> = {
       organizationUrl: process.env.AZDO_ORG_URL,
@@ -91,7 +96,7 @@ export class AzureDevOpsConfigManager {
       project: process.env.AZDO_PROJECT,
       repository: process.env.AZDO_REPOSITORY,
       repositoryId: process.env.AZDO_REPOSITORY_ID,
-      enforcementMode: (process.env.AZDO_ENFORCEMENT_MODE as any) || DEFAULT_CONFIG.enforcementMode,
+      enforcementMode,
       strictMode: process.env.AZDO_STRICT_MODE === 'true' || DEFAULT_CONFIG.strictMode,
       verbose: process.env.AZDO_VERBOSE === 'true' || DEFAULT_CONFIG.verbose,
       ...DEFAULT_CONFIG,

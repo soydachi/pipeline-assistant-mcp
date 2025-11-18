@@ -1,236 +1,82 @@
-# Ejemplos de Pipeline Assistant MCP
+# Examples
 
-Este directorio contiene ejemplos prácticos para usar Pipeline Assistant.
+Example pipelines and configurations for Pipeline Assistant MCP.
 
-## 📁 Estructura
+## Contents
 
 ```
 examples/
-├── pipelines/              # Ejemplos de pipelines
-│   ├── pipeline-con-problemas.yml
-│   └── pipeline-arreglado.yml
-├── config.json            # Configuración de ejemplo
-└── README.md             # Este archivo
+├── pipelines/
+│   ├── pipeline-con-problemas.yml  # Pipeline with intentional issues
+│   └── pipeline-arreglado.yml      # Corrected version
+└── config.json                     # Custom configuration example
 ```
 
-## 🚀 Uso Rápido
+## Usage
 
-### 1. Analizar Pipeline Problemático
+### Analyze Problem Pipeline
 
 ```bash
 node dist/cli/pipeline-assistant.js analyze \
-  --file examples/pipelines/pipeline-con-problemas.yml
+  examples/pipelines/pipeline-con-problemas.yml
 ```
 
-**Resultado esperado:**
-- Score: ~25/100
-- 2 secretos hardcodeados detectados
-- Trigger configuration inseguro
-- Sin stage de seguridad
-- Sin tests
+Expected output: Score ~25%, multiple critical issues detected.
 
-### 2. Analizar Pipeline Arreglado
+### Analyze Fixed Pipeline
 
 ```bash
 node dist/cli/pipeline-assistant.js analyze \
-  --file examples/pipelines/pipeline-arreglado.yml
+  examples/pipelines/pipeline-arreglado.yml
 ```
 
-**Resultado esperado:**
-- Score: ~95/100
-- Todos los secretos en Key Vault
-- Stages de seguridad incluidos
-- Tests y validaciones presentes
+Expected output: Score ~95%, no critical issues.
 
-### 3. Generar Pipeline desde Cero
+### Generate New Pipeline
 
 ```bash
-# Pipeline básico para Node.js
+# Node.js
 node dist/cli/pipeline-assistant.js generate \
-  --type node \
-  --env dev \
-  --output mi-pipeline.yml
+  --type node --env production
 
-# Pipeline complejo para .NET con servicios
+# .NET with services
 node dist/cli/pipeline-assistant.js generate \
   --type dotnet \
-  --services redis,azuresql,keyvault,servicebus \
-  --env production \
-  --output pipeline-produccion.yml
+  --services redis,azuresql,keyvault \
+  --env production
 ```
 
-### 4. Obtener Sugerencias
+### Simulate PR Bot
 
 ```bash
-node dist/cli/pipeline-assistant.js suggest \
-  --file examples/pipelines/pipeline-con-problemas.yml \
-  --focus security
-```
-
-### 5. Usar Configuración Custom
-
-```bash
-node dist/cli/pipeline-assistant.js analyze \
-  --file examples/pipelines/pipeline-con-problemas.yml \
-  --config examples/config.json
-```
-
-## 📊 Ejemplos de Wiki
-
-### Ver Estándares
-
-```bash
-# Listar todos
-node dist/cli/wiki-cli.js standards --list
-
-# Ver detalle
-node dist/cli/wiki-cli.js standards --show sec-001
-```
-
-### Ver Templates
-
-```bash
-# Listar templates
-node dist/cli/wiki-cli.js templates --list
-
-# Exportar template
-node dist/cli/wiki-cli.js templates --export microservicio-dotnet
-```
-
-### Métricas
-
-```bash
-# Métricas del mes actual
-node dist/cli/wiki-cli.js metrics --current
-
-# Historial
-node dist/cli/wiki-cli.js metrics --history 12
-
-# Generar reporte
-node dist/cli/wiki-cli.js metrics --report markdown --export metricas.md
-```
-
-## 🤖 Ejemplos de PR Bot
-
-### Simular Escenarios
-
-```bash
-# Pipeline bueno
-node dist/cli/pr-bot-cli.js simulate --scenario good
-
-# Pipeline malo
 node dist/cli/pr-bot-cli.js simulate --scenario bad
-
-# Pipeline mixto
-node dist/cli/pr-bot-cli.js simulate --scenario mixed
+node dist/cli/pr-bot-cli.js simulate --scenario good
 ```
 
-### Analizar PR Real (requiere GITHUB_TOKEN)
+## Custom Configuration
 
-```bash
-export GITHUB_TOKEN="ghp_your_token_here"
+Use `config.json` for custom rules:
 
-# Dry run (no publica comentarios)
-node dist/cli/pr-bot-cli.js analyze \
-  --owner tu-usuario \
-  --repo tu-repo \
-  --pr 1 \
-  --token $GITHUB_TOKEN \
-  --dry-run
-
-# Análisis real
-node dist/cli/pr-bot-cli.js analyze \
-  --owner tu-usuario \
-  --repo tu-repo \
-  --pr 1 \
-  --token $GITHUB_TOKEN
+```json
+{
+  "enforcement": {
+    "mode": "strict",
+    "blockOnCritical": true,
+    "requireMinScore": 80
+  },
+  "customRules": [
+    {
+      "id": "CUSTOM-001",
+      "pattern": "todo|fixme",
+      "severity": "MEDIUM",
+      "message": "Resolve TODO comments"
+    }
+  ]
+}
 ```
 
-## 🎯 Escenarios de Prueba
+## Notes
 
-### Escenario 1: Pipeline con Secretos
-
-**Problema:** Pipeline con credenciales hardcodeadas
-
-```bash
-# Analizar
-node dist/cli/pipeline-assistant.js analyze \
-  --file examples/pipelines/pipeline-con-problemas.yml
-
-# Ver sugerencias
-node dist/cli/pipeline-assistant.js suggest \
-  --file examples/pipelines/pipeline-con-problemas.yml \
-  --focus security
-```
-
-### Escenario 2: Pipeline sin Tests
-
-**Problema:** Pipeline que omite pruebas
-
-```bash
-# El análisis detectará la falta de tests
-node dist/cli/pipeline-assistant.js analyze \
-  --file examples/pipelines/pipeline-con-problemas.yml \
-  --strict
-```
-
-### Escenario 3: Compliance Check
-
-**Problema:** Verificar que un pipeline cumple con políticas
-
-```bash
-# Generar análisis
-node dist/cli/pr-bot-cli.js analyze \
-  --owner example \
-  --repo example \
-  --pr 1 \
-  --token fake-token \
-  --dry-run 2> analysis.json
-
-# Verificar compliance
-node dist/cli/pr-bot-cli.js check \
-  --input analysis.json \
-  --min-score 80 \
-  --max-critical 0 \
-  --max-high 2
-```
-
-## 🔷 Azure DevOps Integration (NUEVO)
-
-### Configurar Azure DevOps
-
-```bash
-# Variables de entorno requeridas
-export AZDO_ORG_URL="https://dev.azure.com/tu-org"
-export AZDO_PAT="tu-personal-access-token"
-export AZDO_PROJECT="NombreDelProyecto"
-```
-
-### Analizar PR en Azure DevOps
-
-```bash
-# Análisis básico
-node dist/cli/azure-devops-cli.js analyze-pr --pr 123
-
-# Con comentarios inline
-node dist/cli/azure-devops-cli.js analyze-pr \
-  --pr 123 \
-  --post-comments \
-  --mode learning
-
-# Modo enforcement (bloquea merge)
-node dist/cli/azure-devops-cli.js analyze-pr \
-  --pr 123 \
-  --post-comments \
-  --update-status \
-  --mode enforcement \
-  --min-score 80
-```
-
-## 📝 Notas
-
-- Todos los ejemplos asumen que has compilado el proyecto con `npm run build`
-- Los tokens de GitHub deben tener permisos de `repo` y `pull_request`
-- Los tokens de Azure DevOps deben tener permisos de `Code`, `Work Items` y `Build`
-- Los archivos de configuración custom son opcionales
-- Los reportes pueden exportarse en formato markdown, JSON o HTML
+- Build project first: `npm run build`
+- GitHub tokens need `repo` and `pull_request` permissions
+- Azure DevOps PATs need `Code`, `Work Items`, and `Build` permissions

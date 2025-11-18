@@ -1,227 +1,126 @@
 # Contributing to Pipeline Assistant MCP
 
-¡Gracias por tu interés en contribuir a Pipeline Assistant MCP! 🎉
+Thank you for your interest in contributing! This document provides guidelines for contributing to the project.
 
-## 📋 Código de Conducta
+## Code of Conduct
 
-Este proyecto adhiere a un código de conducta basado en el respeto mutuo. Se espera que todos los contribuidores mantengan un ambiente acogedor y profesional.
+Be respectful and constructive. We welcome contributors of all experience levels.
 
-## 🚀 Cómo Contribuir
+## How to Contribute
 
-### Reportar Bugs
+### Reporting Issues
 
-Si encuentras un bug:
+1. Search existing issues first
+2. Use the issue template
+3. Include reproduction steps
+4. Provide environment details (Node.js version, OS)
 
-1. Verifica que no haya sido reportado previamente en [Issues](https://github.com/soydachi/pipeline-assistant-mcp/issues)
-2. Crea un nuevo issue incluyendo:
-   - Descripción clara del problema
-   - Pasos para reproducir
-   - Comportamiento esperado vs actual
-   - Versión del proyecto y entorno
-   - Logs relevantes
+### Submitting Changes
 
-### Sugerir Mejoras
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make your changes
+4. Write/update tests
+5. Run quality checks: `npm run lint && npm test`
+6. Commit with clear message: `git commit -m "feat: add new feature"`
+7. Push and create Pull Request
 
-Para sugerir nuevas características:
+### Commit Messages
 
-1. Revisa el [Roadmap](README.md#roadmap) y los issues existentes
-2. Abre un issue de tipo "enhancement" describiendo:
-   - La funcionalidad propuesta
-   - Casos de uso
-   - Posible implementación (opcional)
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-### Pull Requests
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation
+- `refactor:` - Code refactoring
+- `test:` - Tests
+- `chore:` - Maintenance
 
-1. **Fork el repositorio** y crea tu branch desde `main`:
-   ```bash
-   git checkout -b feature/mi-nueva-caracteristica
-   ```
-
-2. **Sigue las convenciones del proyecto**:
-   - Código en TypeScript
-   - Tests para nuevas funcionalidades
-   - Documentación actualizada
-
-3. **Estructura de commits**:
-   ```
-   tipo: descripción corta
-
-   Descripción detallada opcional
-
-   Fixes #123
-   ```
-
-   Tipos válidos:
-   - `feat`: Nueva característica
-   - `fix`: Corrección de bug
-   - `docs`: Cambios en documentación
-   - `style`: Formato (sin cambios en lógica)
-   - `refactor`: Refactorización
-   - `test`: Añadir o corregir tests
-   - `chore`: Tareas de mantenimiento
-
-4. **Asegúrate de que el código pase las pruebas**:
-   ```bash
-   npm run lint
-   npm run test
-   npm run build
-   ```
-
-5. **Actualiza la documentación** si es necesario
-
-6. **Push a tu fork** y crea un Pull Request
-
-## 🔧 Configuración del Entorno de Desarrollo
-
-### Requisitos
-
-- Node.js >= 20.0.0
-- npm >= 9.0.0
-- Git
-
-### Setup
+## Development Setup
 
 ```bash
-# Clonar tu fork
-git clone https://github.com/tu-usuario/pipeline-assistant-mcp.git
+git clone https://github.com/soydachi/pipeline-assistant-mcp.git
 cd pipeline-assistant-mcp
-
-# Instalar dependencias
 npm install
-
-# Compilar
 npm run build
-
-# Ejecutar tests
 npm test
-
-# Modo desarrollo
-npm run dev
 ```
 
-## 📝 Guías de Estilo
+### Project Structure
+
+```
+src/                 # Core TypeScript source
+├── server.ts        # MCP server
+├── pipeline-*.ts    # Pipeline logic
+├── azure-devops/    # Azure DevOps integration
+cli/                 # CLI tools
+vscode-extension/    # VS Code extension
+tests/               # Test suite
+wiki/standards/      # Corporate standards
+```
+
+## Code Standards
 
 ### TypeScript
 
-- Usa tipos explícitos cuando sea posible
-- Evita `any`, usa `unknown` si es necesario
-- Interfaces para objetos, types para uniones/intersecciones
-- Nombres descriptivos para variables y funciones
+- Use strict mode
+- Avoid `any` type - use proper interfaces
+- Document public functions with JSDoc
+- Handle errors explicitly
 
-```typescript
-// ✅ Bueno
-interface PipelineConfig {
-  projectType: 'dotnet' | 'node' | 'python';
-  environment: Environment;
-  services: AzureService[];
-}
+### Security
 
-// ❌ Evitar
-interface Config {
-  type: any;
-  env: string;
-  svcs: Array<any>;
-}
-```
+- Never hardcode secrets
+- Validate all inputs
+- Use parameterized queries
+- Redact sensitive data in logs
 
-### Tests
+### Testing
 
-- Un archivo de test por módulo
-- Usa `describe` para agrupar tests relacionados
-- Nombres descriptivos para los tests
-- Mocks cuando sea necesario
+- Write tests for new features
+- Maintain existing test coverage
+- Use descriptive test names
+- Mock external dependencies
 
-```typescript
-describe('PipelineAnalyzer', () => {
-  describe('analyze', () => {
-    it('should detect hardcoded secrets', async () => {
-      // Arrange
-      const pipeline = createTestPipeline();
-      
-      // Act
-      const result = await analyzer.analyze(pipeline);
-      
-      // Assert
-      expect(result.violations).toContainEqual(
-        expect.objectContaining({
-          type: 'HARDCODED_SECRET'
-        })
-      );
-    });
-  });
-});
-```
+### Quality Checks
 
-### Documentación
-
-- Comenta funciones públicas complejas
-- Usa JSDoc para APIs públicas
-- README claro para nuevas características
-- Actualiza CHANGELOG.md
-
-## 🏗️ Estructura del Proyecto
-
-```
-src/
-├── server.ts           # Entry point del servidor MCP
-├── handlers/           # Handlers para herramientas MCP
-├── analyzers/          # Lógica de análisis
-├── generators/         # Generadores de pipelines
-├── parsers/           # Parsers de wiki/YAML
-└── utils/             # Utilidades compartidas
-```
-
-## 🧪 Testing
-
-### Ejecutar Tests
+Before submitting:
 
 ```bash
-# Todos los tests
-npm test
-
-# Con coverage
-npm run test:coverage
-
-# En modo watch
-npm run test:watch
-
-# Un archivo específico
-npm test -- pipeline-analyzer.test.ts
+npm run lint        # Check code style
+npm test            # Run tests
+npm run build       # Verify compilation
 ```
 
-### Escribir Tests
+## Areas for Contribution
 
-Los tests deben cubrir:
-- Casos de éxito
-- Casos de error
-- Edge cases
-- Integración cuando sea relevante
+### Good First Issues
 
-## 📦 Proceso de Release
+- Documentation improvements
+- Additional pipeline templates
+- New violation detection rules
+- Test coverage improvements
 
-1. Los releases se hacen desde la rama `main`
-2. Versionado semántico (MAJOR.MINOR.PATCH)
-3. Actualizar CHANGELOG.md
-4. Crear tag: `git tag v1.0.0`
-5. Push con tags: `git push origin main --tags`
+### Advanced
 
-## 💬 Comunicación
+- GitLab integration
+- Terraform/IaC support
+- Web dashboard
+- Performance optimizations
 
-- **Issues**: Para bugs y características
-- **Discussions**: Para preguntas y discusiones generales
-- **Pull Requests**: Para contribuciones de código
+## Review Process
 
-## 📚 Recursos
+1. Automated checks must pass
+2. At least one maintainer review
+3. Changes may require updates based on feedback
+4. Merged after approval
 
-- [Model Context Protocol](https://modelcontextprotocol.io)
-- [Azure Pipelines Docs](https://docs.microsoft.com/azure/devops/pipelines)
-- [GitHub Actions Docs](https://docs.github.com/actions)
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
+## Questions?
 
-## 🙏 Reconocimientos
+- Open a GitHub issue
+- Check existing documentation
+- Review similar PRs
 
-Todos los contribuidores serán reconocidos en el README principal.
+## License
 
----
-
-¿Preguntas? Abre un issue o contacta a [@soydachi](https://github.com/soydachi)
+By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
