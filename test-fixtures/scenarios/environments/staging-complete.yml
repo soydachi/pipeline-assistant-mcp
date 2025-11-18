@@ -1,0 +1,89 @@
+# Pipeline para ambiente de staging
+# Escenario: Completo con tests, security, manual approval
+
+trigger:
+  branches:
+    include:
+      - develop
+      - release/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: staging-variables
+  - name: environment
+    value: 'staging'
+
+stages:
+- stage: Validate
+  jobs:
+  - job: ValidateJob
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+    - script: npm ci
+    - script: npm run lint
+    - script: npm run type-check
+
+- stage: Security
+  dependsOn: Validate
+  jobs:
+  - job: SecurityScan
+    steps:
+    - task: TruffleHog@1
+      inputs:
+        failOnSecrets: true
+    - task: SonarQubeAnalyze@5
+    - task: SnykSecurityScan@1
+      inputs:
+        failOnIssues: true
+        severityThreshold: 'medium'  # Más estricto que prod
+
+- stage: Build
+  dependsOn: Security
+  jobs:
+  - job: BuildJob
+    steps:
+    - script: npm run build
+    - task: PublishBuildArtifacts@1
+      inputs:
+        artifactName: 'drop'
+
+- stage: Test
+  dependsOn: Build
+  jobs:
+  - job: AllTests
+    steps:
+    - script: npm test -- --coverage --watchAll=false
+      displayName: 'Unit tests'
+
+    - script: npm run test:integration
+      displayName: 'Integration tests'
+
+    - script: npm run test:e2e
+      displayName: 'E2E tests'
+
+    - task: PublishCodeCoverageResults@1
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: 'coverage/cobertura-coverage.xml'
+
+- stage: Deploy
+  dependsOn: Test
+  jobs:
+  - deployment: DeployStaging
+    environment: 'staging'  # Puede requerir approval según config
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo "Deploying to staging"
+            displayName: 'Deploy'
+
+          - script: |
+              curl -f https://staging.example.com/health || exit 1
+            displayName: 'Health check'
+
+# EXPECTED: Score > 85%

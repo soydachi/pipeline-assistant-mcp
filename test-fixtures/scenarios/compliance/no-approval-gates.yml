@@ -1,0 +1,56 @@
+# Pipeline sin approval gates para producción
+# Escenario: Deploy automático a prod sin revisión
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  jobs:
+  - job: BuildJob
+    steps:
+    - script: npm ci && npm run build
+      displayName: 'Build'
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: 'dist'
+        artifactName: 'drop'
+
+- stage: Test
+  dependsOn: Build
+  jobs:
+  - job: TestJob
+    steps:
+    - script: npm test
+      displayName: 'Test'
+
+- stage: DeployStaging
+  dependsOn: Test
+  jobs:
+  - deployment: StagingDeploy
+    environment: 'staging'  # OK: staging sin approval
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo "Deploy to staging"
+
+- stage: DeployProduction
+  dependsOn: DeployStaging
+  jobs:
+  # PROBLEMA: deployment sin environment con approvals
+  - job: ProductionDeploy  # Debería ser 'deployment' con environment
+    steps:
+    - script: echo "Deploy to production"
+      displayName: 'Deploy to prod'
+
+# EXPECTED VIOLATIONS:
+# - CRITICAL: Production deploy without approval gate (COM-002)
+# - HIGH: Using job instead of deployment for production
+# - HIGH: No environment protection rules
+# EXPECTED SCORE: < 50%

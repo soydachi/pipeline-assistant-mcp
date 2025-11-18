@@ -1,0 +1,71 @@
+# Pipeline sin stage de seguridad
+# Escenario: Pipeline que va directo de Build a Deploy
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: production-variables
+  - name: nodeVersion
+    value: '20.x'
+
+stages:
+- stage: Validate
+  jobs:
+  - job: ValidateJob
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: $(nodeVersion)
+    - script: npm ci
+      displayName: 'Install'
+    - script: npm run lint
+      displayName: 'Lint'
+
+- stage: Build
+  dependsOn: Validate
+  jobs:
+  - job: BuildJob
+    steps:
+    - script: npm run build
+      displayName: 'Build'
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: 'dist'
+        artifactName: 'drop'
+
+# PROBLEMA: Falta stage de Security entre Build y Test/Deploy
+
+- stage: Test
+  dependsOn: Build
+  jobs:
+  - job: TestJob
+    steps:
+    - script: npm test
+      displayName: 'Run tests'
+
+- stage: Deploy
+  dependsOn: Test
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployJob
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo "Deploying to production"
+            displayName: 'Deploy'
+
+# EXPECTED VIOLATIONS:
+# - CRITICAL: Missing Security stage (SEC-001, SEC-002, SEC-003 not applied)
+# - HIGH: No secret scanning before deploy
+# - HIGH: No SAST analysis
+# - HIGH: No dependency scanning
+# EXPECTED SCORE: < 50%

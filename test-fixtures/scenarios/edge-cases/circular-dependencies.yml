@@ -1,0 +1,34 @@
+# Pipeline con dependencias circulares
+# Escenario: Stages que dependen entre sí
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: StageA
+  dependsOn: StageC  # PROBLEMA: Dependencia circular
+  jobs:
+  - job: JobA
+    steps:
+    - script: echo "Stage A"
+
+- stage: StageB
+  dependsOn: StageA
+  jobs:
+  - job: JobB
+    steps:
+    - script: echo "Stage B"
+
+- stage: StageC
+  dependsOn: StageB  # Completa el ciclo: A -> C -> B -> A
+  jobs:
+  - job: JobC
+    steps:
+    - script: echo "Stage C"
+
+# EXPECTED: Error - Circular dependency detected

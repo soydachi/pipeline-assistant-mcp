@@ -1,0 +1,110 @@
+# Pipeline para Azure Functions con CosmosDB
+# Escenario: Serverless con base de datos NoSQL
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: production-variables
+  - name: functionAppName
+    value: 'func-$(Build.Repository.Name)-prod'
+  - name: cosmosDbAccount
+    value: 'cosmos-$(Build.Repository.Name)-prod'
+  - name: cosmosDbDatabase
+    value: 'appdb'
+  - name: keyVaultName
+    value: 'kv-$(Build.Repository.Name)-prod'
+
+stages:
+- stage: Validate
+  jobs:
+  - job: ValidateJob
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+    - script: npm ci
+    - script: npm run lint
+
+- stage: Security
+  dependsOn: Validate
+  jobs:
+  - job: SecurityScan
+    steps:
+    - task: TruffleHog@1
+      inputs:
+        failOnSecrets: true
+    - task: SonarQubeAnalyze@5
+    - task: SnykSecurityScan@1
+      inputs:
+        failOnIssues: true
+
+- stage: KeyVault
+  displayName: 'Load Secrets'
+  dependsOn: Security
+  jobs:
+  - job: LoadSecrets
+    steps:
+    - task: AzureKeyVault@2
+      inputs:
+        azureSubscription: 'AzureServiceConnection'
+        KeyVaultName: '$(keyVaultName)'
+        SecretsFilter: 'COSMOS-CONNECTION-STRING,COSMOS-PRIMARY-KEY'
+
+- stage: Build
+  dependsOn: Security
+  jobs:
+  - job: BuildJob
+    steps:
+    - script: npm run build
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '.'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/function.zip'
+    - task: PublishBuildArtifacts@1
+      inputs:
+        artifactName: 'drop'
+
+- stage: Deploy
+  dependsOn: [Build, KeyVault]
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployFunction
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureCLI@2
+            displayName: 'Validate CosmosDB'
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              scriptType: 'bash'
+              inlineScript: |
+                az cosmosdb show --name $(cosmosDbAccount) --resource-group $(resourceGroup)
+
+          - task: AzureFunctionApp@1
+            displayName: 'Deploy Function'
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              appType: 'functionApp'
+              appName: '$(functionAppName)'
+              package: '$(Pipeline.Workspace)/drop/function.zip'
+
+          - task: AzureCLI@2
+            displayName: 'Configure CosmosDB connection'
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              scriptType: 'bash'
+              inlineScript: |
+                az functionapp config appsettings set \
+                  --name $(functionAppName) \
+                  --resource-group $(resourceGroup) \
+                  --settings "CosmosDbConnectionString=$(COSMOS-CONNECTION-STRING)"
+
+# EXPECTED: Score > 85%

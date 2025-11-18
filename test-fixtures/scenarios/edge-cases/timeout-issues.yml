@@ -1,0 +1,47 @@
+# Pipeline con problemas de timeout
+# Escenario: Timeouts muy cortos o muy largos
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  jobs:
+  - job: BuildJob
+    timeoutInMinutes: 1  # PROBLEMA: Muy corto para build
+    steps:
+    - script: npm ci && npm run build
+      displayName: 'Build'
+      timeoutInMinutes: 0  # PROBLEMA: Sin timeout
+
+- stage: Test
+  dependsOn: Build
+  jobs:
+  - job: TestJob
+    timeoutInMinutes: 480  # PROBLEMA: 8 horas es excesivo
+    steps:
+    - script: npm test
+      displayName: 'Test'
+
+- stage: Deploy
+  dependsOn: Test
+  jobs:
+  - job: DeployJob
+    steps:
+    - script: |
+        # PROBLEMA: Script que puede colgar sin timeout
+        while true; do
+          curl https://api.example.com/status || sleep 60
+        done
+      displayName: 'Wait for deployment'
+
+# EXPECTED WARNINGS:
+# - Job timeout too short (1 min)
+# - Job timeout excessive (480 min)
+# - Script without timeout
+# EXPECTED SCORE: 50-60%

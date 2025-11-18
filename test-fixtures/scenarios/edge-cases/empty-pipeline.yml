@@ -1,0 +1,14 @@
+# Pipeline vacío
+# Escenario: Sin stages ni jobs
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# PROBLEMA: Sin stages ni jobs definidos
+
+# EXPECTED: Error - No stages or jobs defined

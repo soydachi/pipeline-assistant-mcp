@@ -1,0 +1,123 @@
+# Pipeline correcto para Java con Maven
+# Escenario: Configuración óptima de referencia
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: production-variables
+  - name: javaVersion
+    value: '17'
+  - name: MAVEN_CACHE_FOLDER
+    value: $(Pipeline.Workspace)/.m2/repository
+
+stages:
+- stage: Validate
+  displayName: 'Validation'
+  jobs:
+  - job: ValidateJob
+    steps:
+    - task: JavaToolInstaller@0
+      inputs:
+        versionSpec: $(javaVersion)
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
+    - task: Cache@2
+      displayName: 'Cache Maven'
+      inputs:
+        key: 'maven | "$(Agent.OS)" | **/pom.xml'
+        restoreKeys: |
+          maven | "$(Agent.OS)"
+        path: $(MAVEN_CACHE_FOLDER)
+
+    - task: Maven@3
+      displayName: 'Validate'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'validate'
+
+    - task: Maven@3
+      displayName: 'Checkstyle'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'checkstyle:check'
+
+- stage: Security
+  displayName: 'Security'
+  dependsOn: Validate
+  jobs:
+  - job: SecurityScan
+    steps:
+    - task: TruffleHog@1
+      displayName: 'Secret scanning'
+      inputs:
+        failOnSecrets: true
+
+    - task: SonarQubePrepare@5
+      displayName: 'SonarQube prepare'
+      inputs:
+        SonarQube: 'SonarQubeConnection'
+        scannerMode: 'Other'
+
+    - task: Maven@3
+      displayName: 'SonarQube analyze'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'sonar:sonar'
+
+    - task: SnykSecurityScan@1
+      displayName: 'Snyk scan'
+      inputs:
+        failOnIssues: true
+
+    - task: Maven@3
+      displayName: 'OWASP Dependency Check'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'org.owasp:dependency-check-maven:check'
+
+- stage: Build
+  displayName: 'Build'
+  dependsOn: Security
+  jobs:
+  - job: BuildJob
+    steps:
+    - task: Maven@3
+      displayName: 'Build'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'package -DskipTests'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: 'target/*.jar'
+        artifactName: 'drop'
+
+- stage: Test
+  displayName: 'Test'
+  dependsOn: Build
+  jobs:
+  - job: UnitTests
+    steps:
+    - task: Maven@3
+      displayName: 'Run tests'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'test'
+        publishJUnitResults: true
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+        codeCoverageToolOption: 'JaCoCo'
+
+    - task: PublishCodeCoverageResults@1
+      inputs:
+        codeCoverageTool: 'JaCoCo'
+        summaryFileLocation: 'target/site/jacoco/jacoco.xml'
+
+# EXPECTED: Score > 90%, no violations

@@ -1,0 +1,42 @@
+# Pipeline sin estructura de stages
+# Escenario: Usa jobs directamente (patrón antiguo)
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# PROBLEMA: Jobs directos sin stages
+jobs:
+- job: BuildAndTest
+  displayName: 'Build and Test'
+  steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+
+  - script: npm ci
+    displayName: 'Install'
+
+  - script: npm run build
+    displayName: 'Build'
+
+  - script: npm test
+    displayName: 'Test'
+
+- job: Deploy
+  displayName: 'Deploy'
+  dependsOn: BuildAndTest
+  steps:
+  - script: echo "Deploying..."
+    displayName: 'Deploy'
+
+# EXPECTED VIOLATIONS:
+# - HIGH: No stages structure (modern pipelines should use stages)
+# - HIGH: No separation of concerns (build+test in same job)
+# - MEDIUM: No parallel execution possible
+# - MEDIUM: No environment gates
+# EXPECTED SCORE: < 55%

@@ -1,0 +1,113 @@
+# Pipeline correcto para Node.js con TypeScript
+# Escenario: Configuración óptima de referencia
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    exclude:
+      - '*.md'
+      - 'docs/**'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: production-variables
+  - name: nodeVersion
+    value: '20.x'
+  - name: npm_config_cache
+    value: $(Pipeline.Workspace)/.npm
+
+stages:
+- stage: Validate
+  displayName: 'Validation'
+  jobs:
+  - job: ValidateJob
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - task: Cache@2
+      displayName: 'Cache npm'
+      inputs:
+        key: 'npm | "$(Agent.OS)" | package-lock.json'
+        restoreKeys: |
+          npm | "$(Agent.OS)"
+        path: $(npm_config_cache)
+
+    - script: npm ci
+      displayName: 'Install dependencies'
+
+    - script: npm run lint
+      displayName: 'ESLint'
+
+    - script: npm run type-check
+      displayName: 'TypeScript check'
+
+- stage: Security
+  displayName: 'Security'
+  dependsOn: Validate
+  jobs:
+  - job: SecurityScan
+    steps:
+    - task: TruffleHog@1
+      displayName: 'Secret scanning'
+      inputs:
+        failOnSecrets: true
+
+    - task: SonarQubePrepare@5
+      displayName: 'SonarQube prepare'
+      inputs:
+        SonarQube: 'SonarQubeConnection'
+        scannerMode: 'CLI'
+
+    - task: SonarQubeAnalyze@5
+      displayName: 'SonarQube analyze'
+
+    - task: SnykSecurityScan@1
+      displayName: 'Snyk scan'
+      inputs:
+        failOnIssues: true
+        severityThreshold: 'high'
+
+    - script: npm audit --audit-level=high
+      displayName: 'NPM audit'
+
+- stage: Build
+  displayName: 'Build'
+  dependsOn: Security
+  jobs:
+  - job: BuildJob
+    steps:
+    - script: npm run build
+      displayName: 'Build TypeScript'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: 'dist'
+        artifactName: 'drop'
+
+- stage: Test
+  displayName: 'Test'
+  dependsOn: Build
+  jobs:
+  - job: UnitTests
+    steps:
+    - script: npm test -- --coverage
+      displayName: 'Jest with coverage'
+
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/junit.xml'
+
+    - task: PublishCodeCoverageResults@1
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: 'coverage/cobertura-coverage.xml'
+
+# EXPECTED: Score > 90%, no violations

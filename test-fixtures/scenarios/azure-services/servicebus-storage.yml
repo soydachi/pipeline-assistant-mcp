@@ -1,0 +1,125 @@
+# Pipeline para Service Bus con Blob Storage
+# Escenario: Messaging con almacenamiento
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: production-variables
+  - name: serviceBusNamespace
+    value: 'sb-$(Build.Repository.Name)-prod'
+  - name: storageAccount
+    value: 'st$(Build.Repository.Name)prod'
+  - name: keyVaultName
+    value: 'kv-$(Build.Repository.Name)-prod'
+
+stages:
+- stage: Validate
+  jobs:
+  - job: ValidateJob
+    steps:
+    - task: DotNetCoreCLI@2
+      inputs:
+        command: 'restore'
+    - task: DotNetCoreCLI@2
+      inputs:
+        command: 'custom'
+        custom: 'format'
+        arguments: '--verify-no-changes'
+
+- stage: Security
+  dependsOn: Validate
+  jobs:
+  - job: SecurityScan
+    steps:
+    - task: TruffleHog@1
+      inputs:
+        failOnSecrets: true
+    - task: SonarQubeAnalyze@5
+    - task: SnykSecurityScan@1
+      inputs:
+        failOnIssues: true
+
+- stage: KeyVault
+  dependsOn: Security
+  jobs:
+  - job: LoadSecrets
+    steps:
+    - task: AzureKeyVault@2
+      inputs:
+        azureSubscription: 'AzureServiceConnection'
+        KeyVaultName: '$(keyVaultName)'
+        SecretsFilter: 'SERVICEBUS-CONNECTION-STRING,STORAGE-CONNECTION-STRING,STORAGE-SAS-TOKEN'
+
+    - powershell: |
+        $required = @('SERVICEBUS-CONNECTION-STRING', 'STORAGE-CONNECTION-STRING')
+        foreach ($secret in $required) {
+          if (-not (Test-Path env:$secret)) {
+            Write-Error "Missing secret: $secret"
+            exit 1
+          }
+        }
+        Write-Host "All secrets loaded"
+      displayName: 'Validate secrets'
+
+- stage: Build
+  dependsOn: Security
+  jobs:
+  - job: BuildJob
+    steps:
+    - task: DotNetCoreCLI@2
+      inputs:
+        command: 'build'
+        arguments: '--configuration Release'
+    - task: DotNetCoreCLI@2
+      inputs:
+        command: 'publish'
+        arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)'
+    - task: PublishBuildArtifacts@1
+      inputs:
+        artifactName: 'drop'
+
+- stage: Deploy
+  dependsOn: [Build, KeyVault]
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployApp
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureCLI@2
+            displayName: 'Validate Service Bus'
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              scriptType: 'bash'
+              inlineScript: |
+                az servicebus namespace show --name $(serviceBusNamespace) --resource-group $(resourceGroup)
+                az storage account show --name $(storageAccount) --resource-group $(resourceGroup)
+
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              appName: 'app-$(Build.Repository.Name)-prod'
+              package: '$(Pipeline.Workspace)/drop/*.zip'
+
+          - task: AzureCLI@2
+            displayName: 'Configure connections'
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              scriptType: 'bash'
+              inlineScript: |
+                az webapp config appsettings set \
+                  --name app-$(Build.Repository.Name)-prod \
+                  --resource-group $(resourceGroup) \
+                  --settings \
+                    "ServiceBusConnection=$(SERVICEBUS-CONNECTION-STRING)" \
+                    "StorageConnection=$(STORAGE-CONNECTION-STRING)"
+
+# EXPECTED: Score > 85%

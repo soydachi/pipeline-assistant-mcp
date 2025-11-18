@@ -1,0 +1,146 @@
+# Pipeline para ambiente de producción
+# Escenario: Máxima seguridad, múltiples approvals, health checks
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: production-variables
+  - name: environment
+    value: 'production'
+
+stages:
+- stage: Validate
+  jobs:
+  - job: ValidateJob
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+    - script: npm ci --ignore-scripts  # Más seguro
+    - script: npm run lint
+    - script: npm run type-check
+
+- stage: Security
+  dependsOn: Validate
+  jobs:
+  - job: SecurityScan
+    steps:
+    - task: TruffleHog@1
+      displayName: 'Secret scanning'
+      inputs:
+        failOnSecrets: true
+        depth: 100  # Más profundo para prod
+
+    - task: SonarQubePrepare@5
+      inputs:
+        SonarQube: 'SonarQubeConnection'
+        scannerMode: 'CLI'
+        extraProperties: |
+          sonar.qualitygate.wait=true
+
+    - task: SonarQubeAnalyze@5
+
+    - task: SnykSecurityScan@1
+      inputs:
+        failOnIssues: true
+        severityThreshold: 'low'  # Más estricto
+        monitorOnBuild: true
+
+    - script: npm audit --audit-level=low
+      displayName: 'NPM audit (strict)'
+
+- stage: Build
+  dependsOn: Security
+  jobs:
+  - job: BuildJob
+    steps:
+    - script: npm run build:prod
+      displayName: 'Production build'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        artifactName: 'drop'
+
+- stage: Test
+  dependsOn: Build
+  jobs:
+  - job: FullTestSuite
+    steps:
+    - script: npm test -- --coverage --watchAll=false
+    - script: npm run test:integration
+    - script: npm run test:e2e
+    - script: npm run test:smoke
+
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/junit.xml'
+
+    - task: PublishCodeCoverageResults@1
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: 'coverage/cobertura-coverage.xml'
+
+- stage: ApprovalGate
+  dependsOn: Test
+  jobs:
+  - job: WaitForApproval
+    pool: server
+    steps:
+    - task: ManualValidation@0
+      displayName: 'Manual approval required'
+      inputs:
+        notifyUsers: 'release-approvers@company.com'
+        instructions: 'Please review the test results and approve deployment to production'
+        onTimeout: 'reject'
+
+- stage: Deploy
+  dependsOn: ApprovalGate
+  jobs:
+  - deployment: DeployProduction
+    environment: 'production'  # Environment con protection rules
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - script: echo "Pre-deployment checks"
+        deploy:
+          steps:
+          - download: current
+            artifact: 'drop'
+
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'ProductionConnection'
+              appName: 'app-prod'
+              deploymentMethod: 'zipDeploy'
+              package: '$(Pipeline.Workspace)/drop/*.zip'
+
+        routeTraffic:
+          steps:
+          - script: echo "Routing 10% traffic to new version"
+        postRouteTraffic:
+          steps:
+          - script: |
+              # Health check
+              for i in {1..5}; do
+                curl -f https://prod.example.com/health && exit 0
+                sleep 10
+              done
+              exit 1
+            displayName: 'Production health check'
+        on:
+          failure:
+            steps:
+            - script: echo "Deployment failed, triggering rollback"
+          success:
+            steps:
+            - script: echo "Deployment successful"
+
+# EXPECTED: Score > 95%

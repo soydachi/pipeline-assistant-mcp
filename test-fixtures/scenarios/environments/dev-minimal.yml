@@ -1,0 +1,57 @@
+# Pipeline para ambiente de desarrollo
+# Escenario: Rápido, sin approvals, tests básicos
+
+trigger:
+  branches:
+    include:
+      - feature/*
+      - bugfix/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: dev-variables
+  - name: environment
+    value: 'dev'
+
+stages:
+- stage: Build
+  jobs:
+  - job: BuildJob
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+
+    - script: npm ci
+      displayName: 'Install'
+
+    - script: npm run lint
+      displayName: 'Lint'
+
+    - script: npm run build
+      displayName: 'Build'
+
+- stage: Test
+  dependsOn: Build
+  jobs:
+  - job: QuickTest
+    steps:
+    - script: npm test -- --bail
+      displayName: 'Quick tests (fail fast)'
+
+- stage: Deploy
+  dependsOn: Test
+  jobs:
+  - deployment: DeployDev
+    environment: 'dev'  # No requiere approval
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo "Deploying to dev"
+            displayName: 'Deploy'
+
+# EXPECTED: Score 60-70% (missing Security stage for dev is acceptable)
+# EXPECTED WARNINGS: Missing security stage (acceptable for dev)
