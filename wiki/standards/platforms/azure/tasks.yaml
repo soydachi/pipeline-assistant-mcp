@@ -1,5 +1,6 @@
 # Azure DevOps Task Mappings
 # Valid task names and versions for Azure Pipelines
+# Version: 2.0.0 - Updated 2025-11-18
 
 runtime_setup:
   node:
@@ -193,6 +194,166 @@ azure_services:
       manifests: '**/k8s/*.yaml'
       containers: '$(imageRepository):$(Build.BuildId)'
     displayName: 'Deploy to AKS'
+
+# Security scanning tasks
+security:
+  # SEC-001: Secret Scanning
+  trufflehog:
+    type: script
+    script: |
+      docker run --rm -v "$(Build.SourcesDirectory):/src" \
+        trufflesecurity/trufflehog:latest \
+        filesystem /src --fail --no-update
+    displayName: 'TruffleHog Secret Scan'
+
+  # SEC-002: SAST
+  sonarqube_prepare:
+    task: SonarQubePrepare@6
+    inputs:
+      SonarQube: 'SonarQube-Connection'
+      scannerMode: 'CLI'
+      configMode: 'manual'
+      cliProjectKey: '$(Build.Repository.Name)'
+    displayName: 'Prepare SonarQube Analysis'
+
+  sonarqube_analyze:
+    task: SonarQubeAnalyze@6
+    displayName: 'Run SonarQube Analysis'
+
+  sonarqube_publish:
+    task: SonarQubePublish@6
+    inputs:
+      pollingTimeoutSec: '300'
+    displayName: 'Publish SonarQube Results'
+
+  # SEC-003: Dependency Scanning
+  snyk:
+    task: SnykSecurityScan@1
+    inputs:
+      serviceConnectionEndpoint: 'Snyk-Connection'
+      testType: 'app'
+      severityThreshold: 'high'
+      failOnIssues: true
+    displayName: 'Snyk Security Scan'
+
+  # SEC-004: Container Scanning
+  trivy:
+    type: script
+    script: |
+      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        aquasec/trivy:latest image \
+        --exit-code 1 \
+        --severity CRITICAL,HIGH \
+        $(imageRepository):$(Build.BuildId)
+    displayName: 'Trivy Container Scan'
+
+  # SEC-005: Dockerfile Linting
+  hadolint:
+    type: script
+    script: |
+      docker run --rm -i hadolint/hadolint < Dockerfile
+    displayName: 'Hadolint Dockerfile Check'
+
+  # SEC-006: IaC Scanning
+  checkov:
+    type: script
+    script: |
+      docker run --rm -v $(Build.SourcesDirectory):/src \
+        bridgecrew/checkov -d /src --framework all
+    displayName: 'Checkov IaC Scan'
+
+  microsoft_security_devops:
+    task: MicrosoftSecurityDevOps@1
+    inputs:
+      categories: 'secrets,IaC,containers'
+    displayName: 'Microsoft Security DevOps'
+
+  # SEC-007: DAST
+  owasp_zap_baseline:
+    type: script
+    script: |
+      docker run --rm -v $(Build.SourcesDirectory)/reports:/zap/wrk:rw \
+        -t owasp/zap2docker-stable zap-baseline.py \
+        -t $(applicationUrl) \
+        -r zap-report.html \
+        -J zap-report.json \
+        -I
+    displayName: 'OWASP ZAP Baseline Scan'
+
+  owasp_zap_full:
+    type: script
+    script: |
+      docker run --rm -v $(Build.SourcesDirectory)/reports:/zap/wrk:rw \
+        -t owasp/zap2docker-stable zap-full-scan.py \
+        -t $(applicationUrl) \
+        -r zap-full-report.html \
+        -J zap-full-report.json \
+        -I
+    displayName: 'OWASP ZAP Full Scan'
+
+  owasp_zap_api:
+    type: script
+    script: |
+      docker run --rm -v $(Build.SourcesDirectory):/zap/wrk:rw \
+        -t owasp/zap2docker-stable zap-api-scan.py \
+        -t $(openApiSpecUrl) \
+        -f openapi \
+        -r api-scan-report.html \
+        -J api-scan-report.json
+    displayName: 'OWASP ZAP API Scan'
+
+  # SEC-008: License Compliance
+  license_check_npm:
+    type: script
+    script: |
+      npx license-checker --json --out licenses.json
+      npx license-checker --failOn "GPL;AGPL;SSPL;CC-BY-NC"
+    displayName: 'NPM License Check'
+
+  license_check_dotnet:
+    type: script
+    script: |
+      dotnet tool install --global dotnet-project-licenses
+      dotnet-project-licenses -i . --fail-on-forbidden \
+        --forbidden GPL-2.0-only GPL-3.0-only AGPL-3.0-only
+    displayName: '.NET License Check'
+
+  license_check_python:
+    type: script
+    script: |
+      pip install pip-licenses
+      pip-licenses --fail-on "GPL;AGPL"
+    displayName: 'Python License Check'
+
+  # SEC-010: SBOM Generation
+  sbom_syft:
+    type: script
+    script: |
+      docker run --rm -v $(Build.SourcesDirectory):/src \
+        anchore/syft:latest /src \
+        -o spdx-json=/src/sbom.spdx.json \
+        -o cyclonedx-json=/src/sbom.cyclonedx.json
+      cp sbom.*.json $(Build.ArtifactStagingDirectory)/
+    displayName: 'Generate SBOM with Syft'
+
+  sbom_microsoft:
+    type: script
+    script: |
+      dotnet tool install --global Microsoft.Sbom.DotNetTool
+      sbom-tool generate -b $(Build.SourcesDirectory) \
+        -bc $(Build.SourcesDirectory) \
+        -pn $(Build.Repository.Name) \
+        -pv $(Build.BuildNumber) \
+        -ps "Company Name"
+    displayName: 'Generate SBOM with Microsoft Tool'
+
+  sbom_verify:
+    type: script
+    script: |
+      docker run --rm -v $(Build.SourcesDirectory):/src \
+        anchore/grype:latest sbom:/src/sbom.spdx.json \
+        --fail-on high
+    displayName: 'Verify SBOM with Grype'
 
 # Variables syntax
 variables:

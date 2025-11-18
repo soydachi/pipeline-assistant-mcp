@@ -1,5 +1,6 @@
 # GitHub Actions Mappings
 # Valid action names and versions for GitHub Actions workflows
+# Version: 2.0.0 - Updated 2025-11-18
 
 core:
   checkout:
@@ -129,6 +130,7 @@ testing:
     name: 'Upload coverage to Codecov'
 
 security:
+  # GitHub native security
   codeql_init:
     uses: github/codeql-action/init@v3
     with:
@@ -144,6 +146,150 @@ security:
   dependency_review:
     uses: actions/dependency-review-action@v4
     name: 'Dependency Review'
+
+  # SEC-001: Secret Scanning
+  trufflehog:
+    uses: trufflesecurity/trufflehog@main
+    with:
+      path: ./
+      base: '${{ github.event.pull_request.base.sha }}'
+      head: '${{ github.event.pull_request.head.sha }}'
+      extra_args: --fail
+    name: 'TruffleHog Secret Scan'
+
+  # SEC-002: SAST
+  sonarcloud:
+    uses: SonarSource/sonarcloud-github-action@master
+    env:
+      GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+      SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}'
+    with:
+      args: >
+        -Dsonar.organization=${{ vars.SONAR_ORG }}
+        -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+    name: 'SonarCloud Analysis'
+
+  # SEC-003: Dependency Scanning
+  snyk_node:
+    uses: snyk/actions/node@master
+    with:
+      args: --severity-threshold=high
+    env:
+      SNYK_TOKEN: '${{ secrets.SNYK_TOKEN }}'
+    name: 'Snyk Security Scan (Node)'
+
+  snyk_dotnet:
+    uses: snyk/actions/dotnet@master
+    with:
+      args: --severity-threshold=high
+    env:
+      SNYK_TOKEN: '${{ secrets.SNYK_TOKEN }}'
+    name: 'Snyk Security Scan (.NET)'
+
+  snyk_python:
+    uses: snyk/actions/python@master
+    with:
+      args: --severity-threshold=high
+    env:
+      SNYK_TOKEN: '${{ secrets.SNYK_TOKEN }}'
+    name: 'Snyk Security Scan (Python)'
+
+  # SEC-004: Container Scanning
+  trivy:
+    uses: aquasecurity/trivy-action@master
+    with:
+      image-ref: '${{ env.IMAGE_NAME }}:${{ github.sha }}'
+      format: 'table'
+      exit-code: '1'
+      ignore-unfixed: true
+      vuln-type: 'os,library'
+      severity: 'CRITICAL,HIGH'
+    name: 'Trivy Container Scan'
+
+  # SEC-005: Dockerfile Linting
+  hadolint:
+    uses: hadolint/hadolint-action@v3.1.0
+    with:
+      dockerfile: Dockerfile
+      failure-threshold: warning
+    name: 'Hadolint Dockerfile Check'
+
+  # SEC-006: IaC Scanning
+  checkov:
+    uses: bridgecrewio/checkov-action@master
+    with:
+      directory: .
+      framework: all
+      soft_fail: false
+    name: 'Checkov IaC Scan'
+
+  # SEC-007: DAST
+  zap_baseline:
+    uses: zaproxy/action-baseline@v0.12.0
+    with:
+      target: '${{ env.APPLICATION_URL }}'
+      rules_file_name: '.zap/rules.tsv'
+      cmd_options: '-I'
+    name: 'OWASP ZAP Baseline Scan'
+
+  zap_full:
+    uses: zaproxy/action-full-scan@v0.10.0
+    with:
+      target: '${{ env.APPLICATION_URL }}'
+      rules_file_name: '.zap/rules.tsv'
+    name: 'OWASP ZAP Full Scan'
+
+  zap_api:
+    uses: zaproxy/action-api-scan@v0.7.0
+    with:
+      target: '${{ env.OPENAPI_SPEC_URL }}'
+      format: openapi
+    name: 'OWASP ZAP API Scan'
+
+  # SEC-008: License Compliance
+  fossa:
+    uses: fossas/fossa-action@main
+    with:
+      api-key: '${{ secrets.FOSSA_API_KEY }}'
+    name: 'FOSSA License Scan'
+
+  # SEC-009: API Security
+  api_security_audit:
+    uses: 42Crunch/api-security-audit-action@v3
+    with:
+      api-token: '${{ secrets.API_42CRUNCH_TOKEN }}'
+      min-score: 70
+    name: '42Crunch API Security Audit'
+
+  # SEC-010: SBOM Generation
+  sbom_syft:
+    uses: anchore/sbom-action@v0
+    with:
+      format: spdx-json
+      output-file: sbom.spdx.json
+      artifact-name: sbom
+    name: 'Generate SBOM with Syft'
+
+  sbom_cyclonedx:
+    uses: anchore/sbom-action@v0
+    with:
+      format: cyclonedx-json
+      output-file: sbom.cyclonedx.json
+    name: 'Generate SBOM (CycloneDX)'
+
+  sbom_verify:
+    uses: anchore/scan-action@v3
+    with:
+      sbom: sbom.spdx.json
+      fail-build: true
+      severity-cutoff: high
+    name: 'Verify SBOM with Grype'
+
+  sbom_submit:
+    uses: anchore/sbom-action/publish-sbom@v0
+    with:
+      sbom-artifact-match: sbom.spdx.json
+    name: 'Submit SBOM to Dependency Graph'
 
 azure:
   login:
