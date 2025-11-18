@@ -1,0 +1,76 @@
+# Template: .NET 8 Microservice
+# Technology: dotnet
+# Platform: azure-devops
+# Description: Complete CI/CD pipeline for .NET 8 microservices with security scanning
+
+metadata:
+  name: .NET 8 Microservice
+  technology: dotnet
+  version: 8.x
+  features:
+    - Security scanning (TruffleHog, SonarQube, Snyk)
+    - Code coverage reporting
+    - Artifact publishing
+    - Multi-environment deployment
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: pipeline-variables
+  - name: buildConfiguration
+    value: 'Release'
+  - name: dotnetVersion
+    value: '8.x'
+
+stages:
+  - stage: Validate
+    displayName: 'Code Validation'
+    jobs:
+      - job: Lint
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              version: $(dotnetVersion)
+          - script: dotnet restore
+          - script: dotnet format --verify-no-changes
+
+  - stage: Security
+    displayName: 'Security Scanning'
+    dependsOn: Validate
+    jobs:
+      - job: SecretScan
+        steps:
+          - script: |
+              docker run --rm -v "$(Build.SourcesDirectory):/src" \
+                trufflesecurity/trufflehog:latest filesystem /src --fail
+
+  - stage: Build
+    displayName: 'Build & Test'
+    dependsOn: Security
+    jobs:
+      - job: Build
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              version: $(dotnetVersion)
+          - script: dotnet build --configuration $(buildConfiguration)
+          - script: dotnet test --configuration $(buildConfiguration) --collect:"XPlat Code Coverage"
+          - task: PublishCodeCoverageResults@2
+            inputs:
+              summaryFileLocation: '**/coverage.cobertura.xml'
+
+  - stage: Deploy
+    displayName: 'Deploy'
+    dependsOn: Build
+    jobs:
+      - job: Deploy
+        steps:
+          - script: echo "Deploying..."

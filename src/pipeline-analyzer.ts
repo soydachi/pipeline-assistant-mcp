@@ -418,18 +418,41 @@ stages:
     suggestions: Suggestion[],
     projectType?: string
   ): Promise<void> {
-    // Verificar compliance con políticas obligatorias
-    const mandatoryPolicies = this.policyEnforcer.getMandatoryPolicies();
+    // Detect if pipeline uses Docker for building images (not just running docker tools)
+    const usesDocker = yamlContent.includes('Dockerfile') ||
+                       yamlContent.includes('containerRegistry') ||
+                       yamlContent.includes('Docker@') ||
+                       yamlContent.includes('docker build') ||
+                       yamlContent.includes('docker push') ||
+                       yamlContent.includes('buildAndPush');
 
-    mandatoryPolicies.forEach(policy => {
+    // Get applicable policies based on context
+    const applicablePolicies = this.policyEnforcer.getApplicablePolicies({
+      projectType: projectType || 'unknown',
+      usesDocker,
+      environment: yamlContent.includes('prod') ? 'prod' : 'dev'
+    });
+
+    const yamlLower = yamlContent.toLowerCase();
+
+    applicablePolicies.forEach(policy => {
       // Skip policies without tools (like compliance policies)
       if (!policy.tools || !Array.isArray(policy.tools) || policy.tools.length === 0) {
         return;
       }
 
-      const hasPolicyImplementation = policy.tools.some(tool =>
-        yamlContent.includes(tool.task)
-      );
+      // Check if policy is implemented by looking for task names or tool names
+      const hasPolicyImplementation = policy.tools.some(tool => {
+        // Check for task name (e.g., SonarQubePrepare@6)
+        if (tool.task && yamlContent.includes(tool.task)) {
+          return true;
+        }
+        // Check for tool name in content (e.g., trufflehog, trivy)
+        if (tool.name && yamlLower.includes(tool.name.toLowerCase())) {
+          return true;
+        }
+        return false;
+      });
 
       if (!hasPolicyImplementation) {
         violations.push({

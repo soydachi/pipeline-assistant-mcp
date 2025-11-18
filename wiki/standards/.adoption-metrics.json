@@ -1,0 +1,59 @@
+[
+  {
+    "period": {
+      "start": "2025-11-01T00:00:00.000Z",
+      "end": "2025-11-30T23:59:59.999Z"
+    },
+    "pipelines": {
+      "analyzed": 45,
+      "compliant": 38
+    },
+    "compliance": {
+      "average": 87,
+      "trend": 5.2,
+      "distribution": {
+        "excellent": 18,
+        "good": 15,
+        "fair": 8,
+        "poor": 4
+      }
+    },
+    "violations": {
+      "total": 23,
+      "critical": 2,
+      "high": 5,
+      "medium": 10,
+      "low": 6,
+      "byType": [
+        ["SEC-001", 2],
+        ["SEC-002", 3],
+        ["SEC-003", 4],
+        ["SEC-008", 8],
+        ["SEC-010", 6]
+      ],
+      "topViolations": [
+        {
+          "type": "SEC-008 - License Compliance",
+          "count": 8
+        },
+        {
+          "type": "SEC-010 - SBOM Generation",
+          "count": 6
+        },
+        {
+          "type": "SEC-003 - Software Composition Analysis",
+          "count": 4
+        },
+        {
+          "type": "SEC-002 - SAST",
+          "count": 3
+        },
+        {
+          "type": "SEC-001 - Secret Scanning",
+          "count": 2
+        }
+      ]
+    },
+    "generatedAt": "2025-11-18T18:00:00.000Z"
+  }
+]

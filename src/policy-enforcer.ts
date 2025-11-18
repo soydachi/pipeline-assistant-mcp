@@ -73,11 +73,24 @@ export class PolicyEnforcer {
       // Evaluar condiciones específicas
       switch (policy.condition) {
         case 'uses_docker':
+        case 'usesDocker':
           return context.usesDocker === true;
         case 'is_api_project':
+        case 'isApiProject':
           return context.projectType === 'node' || context.projectType === 'dotnet';
         case 'production_only':
+        case 'isProduction':
           return context.environment === 'prod';
+        case 'hasInfraCode':
+        case 'has_infra_code':
+        case 'hasInfrastructure':
+          // Check if there's infrastructure code - default to false for basic pipelines
+          return false;
+        case 'hasWebInterface':
+        case 'has_web_interface':
+        case 'is_web_app AND environment IN [staging, production]':
+          // DAST is for web interfaces - default to false for basic pipelines
+          return false;
         default:
           return policy.mandatory;
       }

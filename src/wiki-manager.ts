@@ -1411,30 +1411,77 @@ stages:
   }
 
   private async loadMarkdownStandards(): Promise<void> {
-    // v2.0: Load from README.md as the main entry point
+    // v2.0: Load policies from security/policies.yaml
+    const policiesFile = path.join(this.wikiPath, 'security', 'policies.yaml');
+
+    if (fs.existsSync(policiesFile)) {
+      const content = await fs.promises.readFile(policiesFile, 'utf-8');
+      const parsed = yaml.parse(content) as any;
+
+      if (parsed?.policies && Array.isArray(parsed.policies)) {
+        parsed.policies.forEach((policy: any) => {
+          const standard: WikiStandard = {
+            id: policy.id,
+            type: policy.level === 'mandatory' ? 'mandatory' : 'recommended',
+            description: policy.description || '',
+            example: policy.azure?.script || policy.github?.script || '',
+            documentation: policy.rationale || '',
+            severity: policy.severity || 'MEDIUM',
+            tags: [policy.category, policy.stage].filter(Boolean),
+            category: policy.category || 'security',
+            version: this.generateVersion(),
+            lastModified: new Date(),
+            author: 'wiki'
+          };
+
+          this.standards.set(standard.id, standard);
+
+          // Also create a rule for compatibility
+          const rule: WikiRule = {
+            id: policy.id,
+            name: policy.name || policy.id,
+            type: policy.level === 'mandatory' ? 'mandatory' : 'recommended',
+            description: policy.description || '',
+            example: standard.example,
+            severity: policy.severity || 'MEDIUM',
+            tags: standard.tags,
+            category: policy.category || 'security',
+            documentation: standard.documentation,
+            check: () => true // Placeholder check function
+          };
+
+          this.rules.set(rule.id, rule);
+        });
+      }
+    }
+
+    // Also try to load from README.md for backward compatibility
     const standardsFile = path.join(this.wikiPath, 'README.md');
 
     if (fs.existsSync(standardsFile)) {
       const content = await fs.promises.readFile(standardsFile, 'utf-8');
       const rules = await this.parseMarkdownToRules(content);
-      
+
       rules.forEach(rule => {
-        const standard: WikiStandard = {
-          id: rule.id,
-          type: rule.type as any,
-          description: rule.description,
-          example: rule.example,
-          documentation: rule.documentation,
-          severity: rule.severity,
-          tags: rule.tags,
-          category: rule.category,
-          version: this.generateVersion(),
-          lastModified: new Date(),
-          author: 'wiki'
-        };
-        
-        this.standards.set(standard.id, standard);
-        this.rules.set(rule.id, rule);
+        // Only add if not already loaded from YAML
+        if (!this.standards.has(rule.id)) {
+          const standard: WikiStandard = {
+            id: rule.id,
+            type: rule.type as any,
+            description: rule.description,
+            example: rule.example,
+            documentation: rule.documentation,
+            severity: rule.severity,
+            tags: rule.tags,
+            category: rule.category,
+            version: this.generateVersion(),
+            lastModified: new Date(),
+            author: 'wiki'
+          };
+
+          this.standards.set(standard.id, standard);
+          this.rules.set(rule.id, rule);
+        }
       });
     }
   }

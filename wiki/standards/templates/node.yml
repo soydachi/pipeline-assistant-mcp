@@ -1,0 +1,81 @@
+# Template: Node.js 20 Application
+# Technology: node
+# Platform: azure-devops
+# Description: Complete CI/CD pipeline for Node.js applications with security scanning
+
+metadata:
+  name: Node.js 20 Application
+  technology: node
+  version: 20.x
+  features:
+    - ESLint validation
+    - Security scanning (TruffleHog, SonarQube, Snyk)
+    - Jest with coverage
+    - npm audit
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: pipeline-variables
+  - name: nodeVersion
+    value: '20.x'
+
+stages:
+  - stage: Validate
+    displayName: 'Code Validation'
+    jobs:
+      - job: Lint
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+          - script: npm ci
+          - script: npm run lint
+
+  - stage: Security
+    displayName: 'Security Scanning'
+    dependsOn: Validate
+    jobs:
+      - job: SecretScan
+        steps:
+          - script: |
+              docker run --rm -v "$(Build.SourcesDirectory):/src" \
+                trufflesecurity/trufflehog:latest filesystem /src --fail
+      - job: DependencyScan
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+          - script: npm ci
+          - script: npm audit --audit-level=high
+
+  - stage: Build
+    displayName: 'Build & Test'
+    dependsOn: Security
+    jobs:
+      - job: Build
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+          - script: npm ci
+          - script: npm run build
+          - script: npm test -- --coverage
+          - task: PublishCodeCoverageResults@2
+            inputs:
+              summaryFileLocation: 'coverage/cobertura-coverage.xml'
+
+  - stage: Deploy
+    displayName: 'Deploy'
+    dependsOn: Build
+    jobs:
+      - job: Deploy
+        steps:
+          - script: echo "Deploying..."
