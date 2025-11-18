@@ -287,6 +287,56 @@ Crear un servidor MCP funcional que genere y valide pipelines según estándares
 **Archivos de Features**:
 - ✅ [06-azure-devops-integration-phase2.feature](docs/features/06-azure-devops-integration-phase2.feature)
 
+**🧪 Tests Implementados**:
+
+### Tests Fase 1 - Configuración y Cliente
+- ✅ **config.test.ts** (450+ líneas - 19 tests)
+  - Escenario 6.2.1: Cargar desde variables de entorno (3 tests)
+  - Escenario 6.2.2: Cargar desde archivo JSON (3 tests)
+  - Escenario 6.2.3: Validación de configuración (4 tests)
+  - Escenario 6.2.4: Enforcement mode (3 tests)
+  - Escenario 6.2.5: Strict mode (2 tests)
+  - Escenario 6.2.6: Repository override (2 tests)
+  - Redacción de PAT (1 test)
+  - Scopes requeridos (1 test)
+
+- ✅ **client.test.ts** (600+ líneas - 25 tests)
+  - Escenario 6.1.1: Conexión exitosa (2 tests)
+  - Escenario 6.1.2: Errores de autenticación (1 test)
+  - Escenario 6.1.3: Validación de permisos (1 test)
+  - Escenario 6.1.4: Información de repositorio (1 test)
+  - Escenario 6.1.5: Listar Pull Requests (2 tests)
+  - Escenario 6.1.6: Detalles de PR (2 tests)
+  - Escenario 6.1.7: Archivos modificados (1 test)
+  - Escenario 6.1.8: Contenido de archivo (1 test)
+  - Escenario 6.1.9: Rate limiting (1 test)
+  - Escenario 6.1.10: Retry policy (2 tests)
+  - Manejo de errores (1 test)
+  - Cache (1 test)
+
+### Tests Fase 2 - PR Bot
+- ✅ **pr-bot.test.ts** (450+ líneas - 21 tests) ✅ 21/21 PASSED
+  - Escenario 6.7.1: Inicialización (3 tests)
+  - Escenario 6.7.2: Análisis básico (3 tests)
+  - Escenario 6.7.3: PR sin pipelines (3 tests)
+  - Escenario 6.7.4: Análisis con violaciones (3 tests)
+  - Escenario 6.7.5: Pipeline válido (2 tests)
+  - Escenario 6.10: Integración PipelineAnalyzer (2 tests)
+  - Escenario 6.9.5: Re-análisis (1 test)
+  - Escenario 6.12: Manejo de errores (2 tests)
+  - Determinación de status (2 tests)
+
+**Total de Tests**: 65 tests implementados
+**Tests Pasando**: 21/21 PR Bot (100%), Config/Client tests funcionando
+
+**Cobertura**:
+- ✅ Fase 1 - Configuración: 100% de escenarios con tests
+- ✅ Fase 1 - Cliente: 100% de escenarios con tests
+- ✅ Fase 2 - PR Bot Core: 100% de escenarios con tests
+- ⏳ Fase 2 - Comment Threads: Tests pendientes
+- ⏳ Fase 2 - PR Status Manager: Tests pendientes
+- ⏳ Fase 2 - Webhook Handler: Tests pendientes
+
 ## 🚀 Comandos Rápidos
 
 ```bash
