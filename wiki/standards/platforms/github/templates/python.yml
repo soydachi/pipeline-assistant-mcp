@@ -1,5 +1,6 @@
-# GitHub Actions workflow for Python Microservice
-# Follows corporate security and quality standards
+# GitHub Actions workflow for Python Application
+# Version: 2.0.0 - Follows corporate security and quality standards
+# Standards reference: wiki/standards/README.md
 
 name: Python CI/CD
 
@@ -8,6 +9,7 @@ on:
     branches:
       - main
       - develop
+      - 'release/**'
     paths-ignore:
       - '*.md'
       - 'docs/**'
@@ -22,8 +24,11 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # ===========================================================================
+  # STAGE 1: VALIDATE
+  # ===========================================================================
   validate:
-    name: Code Validation
+    name: Validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +43,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flake8 black mypy
+          pip install flake8 black mypy isort
 
       - name: Run Flake8
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
@@ -46,24 +51,40 @@ jobs:
       - name: Check Formatting with Black
         run: black --check .
 
+      - name: Check Import Sorting
+        run: isort --check-only .
+
       - name: Type Check with MyPy
         run: mypy . --ignore-missing-imports
-        continue-on-error: true
 
-  security:
-    name: Security Scanning
+  # ===========================================================================
+  # STAGE 2: SECURITY
+  # ===========================================================================
+  secret-scan:
+    name: 'SEC-001: Secret Scan'
     needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: TruffleHog Secret Scan
-        run: |
-          docker run --rm -v "$PWD:/src" \
-            trufflesecurity/trufflehog:latest \
-            filesystem /src \
-            --fail \
-            --no-update
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --fail
+
+  sast:
+    name: 'SEC-002: SAST'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -75,20 +96,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install safety bandit
-
-      - name: Python Safety Check
-        run: safety check -r requirements.txt
+          pip install pytest pytest-cov bandit
 
       - name: Bandit Security Scan
-        run: bandit -r . -x ./tests
+        run: bandit -r . -x ./tests -f json -o bandit-report.json
+        continue-on-error: true
 
-      - name: Snyk Security Scan
-        uses: snyk/actions/python@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high
+      - name: Run Tests for Coverage
+        run: pytest --cov=. --cov-report=xml
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
@@ -100,10 +115,79 @@ jobs:
             -Dsonar.organization=${{ vars.SONAR_ORG }}
             -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.python.bandit.reportPaths=bandit-report.json
 
+  dependency-scan:
+    name: 'SEC-003: Dependency Scan'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install safety pip-audit
+
+      - name: Safety Check
+        run: safety check -r requirements.txt --json > safety-report.json
+        continue-on-error: true
+
+      - name: Pip Audit
+        run: pip-audit --format json --output pip-audit-report.json
+        continue-on-error: true
+
+      - name: Snyk Security Scan
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+  license-compliance:
+    name: 'SEC-008: License Compliance'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pip-licenses
+
+      - name: License Compliance Check
+        run: |
+          pip-licenses --format=json --output-file=licenses.json
+          pip-licenses --fail-on="GPL;AGPL;SSPL"
+
+      - name: Upload License Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: licenses
+          path: licenses.json
+        if: always()
+
+  # ===========================================================================
+  # STAGE 3: BUILD
+  # ===========================================================================
   build:
-    name: Build Application
-    needs: security
+    name: Build
+    needs: [secret-scan, sast, dependency-scan, license-compliance]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,13 +207,31 @@ jobs:
       - name: Build Package
         run: python -m build
 
-      - name: Upload Build Artifact
+      # SEC-010: Generate SBOM
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: |
+            dist/
+            sbom.*.json
 
-  test:
+  # ===========================================================================
+  # STAGE 4: TEST
+  # ===========================================================================
+  unit-tests:
     name: Unit Tests
     needs: build
     runs-on: ubuntu-latest
@@ -146,16 +248,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov pytest-xdist
 
-      - name: Run Tests
-        run: pytest --cov=. --cov-report=xml --junitxml=test-results.xml
+      - name: Run Unit Tests
+        run: pytest --cov=. --cov-report=xml --junitxml=test-results.xml -n auto
 
       - name: Publish Test Results
         uses: dorny/test-reporter@v1
         if: success() || failure()
         with:
-          name: Test Results
+          name: Unit Test Results
           path: test-results.xml
           reporter: java-junit
 
@@ -167,15 +269,73 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  integration-tests:
+    name: Integration Tests
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run Integration Tests
+        run: pytest tests/integration --junitxml=integration-results.xml
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+
+  # ===========================================================================
+  # STAGE 5: SCAN (Container)
+  # ===========================================================================
   docker:
-    name: Build & Push Docker Image
-    needs: test
+    name: Build & Scan Container
+    needs: [unit-tests, integration-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      security-events: write
     steps:
       - uses: actions/checkout@v4
+
+      # SEC-005: Dockerfile Linting
+      - name: Hadolint Dockerfile Check
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
 
       - name: Login to Container Registry
         uses: docker/login-action@v3
@@ -202,15 +362,23 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           load: true
 
+      # SEC-004: Container Scanning
       - name: Trivy Container Scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: 'table'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
 
       - name: Push Docker Image
         uses: docker/build-push-action@v5
@@ -220,6 +388,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  # ===========================================================================
+  # STAGE 6: DEPLOY
+  # ===========================================================================
   deploy-dev:
     name: Deploy to Development
     needs: docker
@@ -227,8 +398,56 @@ jobs:
     runs-on: ubuntu-latest
     environment: development
     steps:
-      - name: Deploy to Dev
-        run: echo "Deploying to development environment..."
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.WEBAPP_NAME }}-dev
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Smoke Test
+        run: |
+          sleep 30
+          curl -f https://${{ vars.WEBAPP_NAME }}-dev.azurewebsites.net/health || exit 1
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: docker
+    if: startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.WEBAPP_NAME }}-staging
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Health Check
+        run: |
+          sleep 30
+          curl -f https://${{ vars.WEBAPP_NAME }}-staging.azurewebsites.net/health || exit 1
+
+      # SEC-007: DAST Scan
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'https://${{ vars.WEBAPP_NAME }}-staging.azurewebsites.net'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-I'
 
   deploy-prod:
     name: Deploy to Production
@@ -237,5 +456,20 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Deploy to Production
-        run: echo "Deploying to production environment..."
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.WEBAPP_NAME }}-prod
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Health Check
+        run: |
+          sleep 30
+          curl -f https://${{ vars.WEBAPP_NAME }}-prod.azurewebsites.net/health || exit 1
