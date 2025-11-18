@@ -19,11 +19,12 @@
 7. [Parte 2: Análisis y Validación](#7-parte-2-análisis-y-validación)
 8. [Parte 3: Integración con VS Code](#8-parte-3-integración-con-vs-code)
 9. [Parte 4: Bot de GitHub](#9-parte-4-bot-de-github)
-10. [Parte 5: Gestión de Wiki y Métricas](#10-parte-5-gestión-de-wiki-y-métricas)
-11. [Demo Completa End-to-End](#11-demo-completa-end-to-end)
-12. [Casos de Uso Reales](#12-casos-de-uso-reales)
-13. [Roadmap y Futuro](#13-roadmap-y-futuro)
-14. [Preguntas Frecuentes](#14-preguntas-frecuentes)
+10. [Parte 5: Integración con Azure DevOps](#10-parte-5-integración-con-azure-devops)
+11. [Parte 6: Gestión de Wiki y Métricas](#11-parte-6-gestión-de-wiki-y-métricas)
+12. [Demo Completa End-to-End](#12-demo-completa-end-to-end)
+13. [Casos de Uso Reales](#13-casos-de-uso-reales)
+14. [Roadmap y Futuro](#14-roadmap-y-futuro)
+15. [Preguntas Frecuentes](#15-preguntas-frecuentes)
 
 ---
 
@@ -1393,12 +1394,651 @@ PR aprobado y puede mergearse
 
 ---
 
-## 10. Parte 5: Gestión de Wiki y Métricas
+## 10. Parte 5: Integración con Azure DevOps
+
+### Objetivo
+Aprender a usar Pipeline Assistant con Azure DevOps: configuración del cliente, análisis automático de PRs, comentarios inline y status checks.
+
+### Introducción
+
+Pipeline Assistant tiene **integración completa con Azure DevOps** implementada en 2 fases:
+
+- **Fase 1 (100% completa)**: Cliente API con autenticación, gestión de PRs, cache, retry logic
+- **Fase 2 (100% completa)**: PR Bot automático con comentarios inline y status checks
+
+### Arquitectura de la Integración
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    AZURE DEVOPS                             │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐ │
+│  │ Pull Request │───▶│   Webhook    │───▶│ Pipeline Bot │ │
+│  └──────────────┘    └──────────────┘    └──────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────────┐
+                    │ AzureDevOpsClient   │
+                    │ - Authentication    │
+                    │ - PR Management     │
+                    │ - File Changes      │
+                    │ - Retry Logic       │
+                    │ - Cache             │
+                    └──────────┬──────────┘
+                              │
+                    ┌─────────▼──────────┐
+                    │ AzureDevOpsPRBot   │
+                    │ - Analyze PR       │
+                    │ - Post Comments    │
+                    │ - Update Status    │
+                    │ - Thread Manager   │
+                    └──────────┬─────────┘
+                              │
+                    ┌─────────▼──────────┐
+                    │ Pipeline Analyzer  │
+                    │ - Detect Issues    │
+                    │ - Calculate Score  │
+                    └────────────────────┘
+```
+
+### Paso 1: Crear Personal Access Token (PAT)
+
+1. **Ir a Azure DevOps**:
+   ```
+   https://dev.azure.com/{tu-organizacion}
+   ```
+
+2. **User Settings → Personal Access Tokens**:
+   - Click en tu avatar (esquina superior derecha)
+   - Click "Personal access tokens"
+   - Click "New Token"
+
+3. **Configurar el token**:
+   ```
+   Name: Pipeline Assistant Bot
+   Organization: {tu-organización}
+   Expiration: 90 days (o Custom)
+
+   Scopes (seleccionar):
+   ✅ Code: Read & Write
+   ✅ Work Items: Read & Write
+   ✅ Build: Read
+   ✅ Pull Request Threads: Read & Write
+   ```
+
+4. **Copiar el token generado**:
+   ```
+   ⚠️ IMPORTANTE: Guarda el token inmediatamente
+   No podrás verlo de nuevo!
+   ```
+
+### Paso 2: Configurar Variables de Entorno
+
+```bash
+# Exportar configuración de Azure DevOps
+export AZDO_ORG_URL="https://dev.azure.com/tu-organizacion"
+export AZDO_PAT="tu-personal-access-token-aqui"
+export AZDO_PROJECT="NombreDelProyecto"
+export AZDO_REPOSITORY="nombre-del-repo"
+
+# Opcional: Configuración avanzada
+export AZDO_ENFORCEMENT_MODE="learning"  # o "enforcement"
+export AZDO_STRICT_MODE="false"
+export AZDO_VERBOSE="true"
+```
+
+**Variables soportadas:**
+
+| Variable | Descripción | Requerido | Default |
+|----------|-------------|-----------|---------|
+| `AZDO_ORG_URL` | URL de la organización | ✅ Sí | - |
+| `AZDO_PAT` | Personal Access Token | ✅ Sí | - |
+| `AZDO_PROJECT` | Nombre del proyecto | ✅ Sí | - |
+| `AZDO_REPOSITORY` | Nombre del repositorio | No | - |
+| `AZDO_REPOSITORY_ID` | ID del repositorio | No | - |
+| `AZDO_ENFORCEMENT_MODE` | Modo de enforcement | No | `learning` |
+| `AZDO_STRICT_MODE` | Análisis estricto | No | `false` |
+| `AZDO_VERBOSE` | Logging detallado | No | `false` |
+
+### Paso 3: Configuración Alternativa con JSON
+
+Si prefieres no usar variables de entorno, crea `azdo-config.json`:
+
+```json
+{
+  "organizationUrl": "https://dev.azure.com/tu-org",
+  "personalAccessToken": "tu-pat-aqui",
+  "project": "MiProyecto",
+  "repository": "mi-repo",
+  "enforcementMode": "learning",
+  "strictMode": false,
+  "enableCache": true,
+  "timeout": 30000,
+  "verbose": true,
+  "retryPolicy": {
+    "maxRetries": 3,
+    "retryDelayMs": 1000,
+    "backoffMultiplier": 2,
+    "retryableStatusCodes": [429, 500, 502, 503, 504]
+  }
+}
+```
+
+**Uso:**
+```bash
+node dist/cli/azure-devops-cli.js analyze \
+  --config azdo-config.json \
+  --pr 123
+```
+
+### Paso 4: Verificar Conexión
+
+Prueba que la configuración funciona:
+
+```bash
+# Test de conexión básica
+node -e "
+const { AzureDevOpsConfigManager } = require('./dist/src/azure-devops/config.js');
+const config = new AzureDevOpsConfigManager();
+try {
+  const cfg = await config.loadFromEnvironment();
+  console.log('✅ Configuración válida');
+  console.log('Organización:', cfg.organizationUrl);
+  console.log('Proyecto:', cfg.project);
+} catch (error) {
+  console.error('❌ Error:', error.message);
+}
+"
+```
+
+**Salida esperada:**
+```
+✅ Configuración válida
+Organización: https://dev.azure.com/tu-org
+Proyecto: MiProyecto
+```
+
+### Ejercicio 5.1: Listar Pull Requests
+
+```bash
+# Crear un script simple para listar PRs
+node -e "
+const { AzureDevOpsClient } = require('./dist/src/azure-devops/client.js');
+const { AzureDevOpsConfigManager } = require('./dist/src/azure-devops/config.js');
+
+(async () => {
+  const configManager = new AzureDevOpsConfigManager();
+  const config = await configManager.loadFromEnvironment();
+  const client = new AzureDevOpsClient(config);
+
+  await client.connect();
+
+  const prs = await client.listPullRequests({
+    status: 'active',
+    limit: 10
+  });
+
+  console.log('📋 Pull Requests Activos:');
+  prs.forEach(pr => {
+    console.log(\`  #\${pr.pullRequestId} - \${pr.title}\`);
+    console.log(\`    Autor: \${pr.createdBy}\`);
+    console.log(\`    Branch: \${pr.sourceBranch} → \${pr.targetBranch}\`);
+    console.log();
+  });
+})();
+"
+```
+
+**Salida esperada:**
+```
+📋 Pull Requests Activos:
+  #456 - feat: Add user authentication
+    Autor: John Doe
+    Branch: feature/auth → main
+
+  #455 - fix: Resolve memory leak in pipeline
+    Autor: Jane Smith
+    Branch: bugfix/memory-leak → main
+
+  #454 - refactor: Update CI/CD configuration
+    Autor: Bob Johnson
+    Branch: refactor/cicd → develop
+```
+
+### Ejercicio 6.2: Analizar un Pull Request
+
+```bash
+# Analizar PR #456
+node dist/cli/azure-devops-cli.js analyze-pr --pr 456
+```
+
+**¿Qué hace esto?**
+
+1. Se conecta a Azure DevOps usando el PAT
+2. Obtiene información del PR #456
+3. Lista todos los archivos modificados
+4. Filtra solo archivos `.yml` y `.yaml`
+5. Descarga el contenido de cada archivo
+6. Ejecuta análisis con Pipeline Analyzer
+7. Genera reporte completo
+
+**Salida esperada:**
+```
+🔍 Analizando Pull Request #456
+════════════════════════════════════════════════════════════════
+
+📁 Repositorio: mi-repo
+📌 Branch: feature/auth → main
+👤 Autor: John Doe
+📅 Creado: 2025-01-18 10:30:00
+
+📄 Archivos de Pipeline Detectados (2):
+  1. azure-pipelines.yml (modificado)
+  2. .azure/ci-pipeline.yml (nuevo)
+
+─────────────────────────────────────────────────────────────────
+📄 Archivo: azure-pipelines.yml
+─────────────────────────────────────────────────────────────────
+
+🚨 CRITICAL Issues (1)
+  [SEC-001] Hardcoded Secret Detected
+  Línea 15: API_KEY: 'sk-1234567890'
+  Usar Azure Key Vault
+
+⚠️  HIGH Issues (1)
+  [COMP-001] Missing Security Stage
+  No se encontró stage de seguridad
+
+📊 Score: 67/100 ⛔
+
+─────────────────────────────────────────────────────────────────
+📄 Archivo: .azure/ci-pipeline.yml
+─────────────────────────────────────────────────────────────────
+
+✅ No issues found!
+
+📊 Score: 98/100 ✅
+
+─────────────────────────────────────────────────────────────────
+📈 RESUMEN GENERAL
+─────────────────────────────────────────────────────────────────
+
+Total Archivos: 2
+Score Promedio: 82.5/100
+Total Violaciones: 2 (1 critical, 1 high)
+
+Estado: ⚠️  REQUIERE ATENCIÓN
+```
+
+### Ejercicio 6.3: Analizar PR con Comentarios Inline
+
+Ahora hagamos el análisis completo que posta comentarios en el PR:
+
+```bash
+node dist/cli/azure-devops-cli.js analyze-pr \
+  --pr 456 \
+  --post-comments \
+  --mode learning
+```
+
+**¿Qué sucede en Azure DevOps?**
+
+El bot crea **comentarios inline** en las líneas exactas con problemas:
+
+```
+📍 azure-pipelines.yml, Línea 15
+
+🤖 Pipeline Assistant Bot comentó:
+
+🚨 CRITICAL: Hardcoded Secret Detected
+
+**Problema:**
+```yaml
+API_KEY: 'sk-1234567890'
+```
+
+Las API keys nunca deben estar hardcodeadas en el código.
+Esto expone credenciales sensibles en el repositorio.
+
+**Recomendación:**
+```yaml
+variables:
+  - group: production-secrets
+
+steps:
+  - task: AzureKeyVault@2
+    inputs:
+      azureSubscription: 'MySubscription'
+      KeyVaultName: 'my-keyvault'
+      SecretsFilter: 'ApiKey'
+
+  - script: echo "API Key: $(ApiKey)"
+    displayName: 'Use API Key from Key Vault'
+```
+
+📚 [Más información sobre Azure Key Vault](https://docs.microsoft.com/azure/key-vault)
+
+---
+*Pipeline Assistant v1.0 • Severity: CRITICAL • Rule: SEC-001*
+```
+
+Y también un **comentario general** al final del PR:
+
+```
+🤖 Pipeline Assistant - Análisis Completo
+
+## 📊 Resultado del Análisis
+
+| Métrica | Valor |
+|---------|-------|
+| Score Global | 82.5/100 ⚠️ |
+| Archivos Analizados | 2 |
+| Violaciones Totales | 2 |
+| Critical | 1 🚨 |
+| High | 1 ⚠️ |
+
+## 📄 Archivos
+
+### ✅ azure-pipelines.yml
+- Score: 67/100
+- Issues: 2 (1 critical, 1 high)
+
+### ✅ .azure/ci-pipeline.yml
+- Score: 98/100
+- Issues: 0
+
+## 🎯 Estado
+
+**Modo Learning Activado** - Este análisis es informativo.
+
+En modo enforcement, este PR sería **bloqueado** debido a:
+- 1 issue crítico de seguridad
+
+## 📝 Siguientes Pasos
+
+1. ✅ Corregir hardcoded secret en línea 15
+2. ✅ Añadir stage de seguridad
+3. 🔄 Push de cambios disparará re-análisis automático
+
+---
+*Pipeline Assistant Bot • [Documentación](https://github.com/soydachi/pipeline-assistant-mcp)*
+```
+
+### Ejercicio 6.4: Modo Enforcement con Status Checks
+
+Ahora activemos el modo enforcement que **bloquea el merge**:
+
+```bash
+node dist/cli/azure-devops-cli.js analyze-pr \
+  --pr 456 \
+  --post-comments \
+  --update-status \
+  --mode enforcement \
+  --min-score 80
+```
+
+**Resultado en Azure DevOps:**
+
+El PR muestra un **status check** que bloquea el merge:
+
+```
+┌─────────────────────────────────────────────┐
+│  Pull Request #456                          │
+├─────────────────────────────────────────────┤
+│  ⛔ Pipeline Assistant - Failed             │
+│     Compliance score: 67/100 (required: 80) │
+│     Critical issues must be resolved        │
+│                                             │
+│  ⚠️  Merge is blocked                       │
+└─────────────────────────────────────────────┘
+```
+
+Los desarrolladores **no pueden hacer merge** hasta que:
+1. Corrijan los issues críticos
+2. El score suba a ≥80
+3. El bot re-analice y apruebe
+
+### Ejercicio 6.5: Re-análisis Automático
+
+Cuando el developer hace push de correcciones:
+
+```bash
+git add azure-pipelines.yml
+git commit -m "fix: Use Key Vault for API key"
+git push
+```
+
+**El webhook de Azure DevOps dispara automáticamente:**
+
+```
+🔄 Webhook recibido: push a feature/auth
+🔍 PR #456 detectado
+🤖 Ejecutando re-análisis...
+
+📊 Nuevo análisis completado:
+  Score: 95/100 ✅ (anterior: 67/100)
+  Critical issues: 0 (anterior: 1)
+
+✅ Status check actualizado: PASSED
+🎉 Merge permitido
+```
+
+### Ejercicio 6.6: Gestión de Comment Threads
+
+El bot gestiona threads inteligentemente:
+
+```typescript
+// Al encontrar una violación
+if (violationFixed) {
+  // Marcar thread como "resolved"
+  await bot.resolveThread(threadId);
+} else if (violationStillPresent) {
+  // Actualizar comentario existente
+  await bot.updateComment(threadId, newContent);
+} else if (newViolation) {
+  // Crear nuevo thread
+  await bot.createThread(fileName, lineNumber, content);
+}
+```
+
+**Ejemplo visual en Azure DevOps:**
+
+```
+📄 azure-pipelines.yml
+
+Línea 15: API_KEY: '$(ApiKey)'  # ← Corregido
+
+  💬 Thread #1 (Resolved ✅)
+     🤖 Pipeline Assistant Bot
+     🚨 CRITICAL: Hardcoded secret detected
+
+     👤 John Doe respondió:
+     Fixed! Now using Key Vault
+
+     🤖 Pipeline Assistant Bot
+     ✅ Verificado - Issue resuelto
+     Thread marcado como resolved
+```
+
+### Ejercicio 6.7: Configuración de Webhooks
+
+Para análisis automático en cada push/PR:
+
+**1. Crear Service Hook en Azure DevOps:**
+
+```
+Project Settings → Service Hooks → Create subscription
+
+Trigger:
+  ✅ Pull request created
+  ✅ Pull request updated
+
+Actions:
+  URL: https://tu-servidor.com/webhook/azure-devops
+  Method: POST
+  Headers:
+    Authorization: Bearer tu-webhook-secret
+```
+
+**2. Implementar webhook handler:**
+
+```typescript
+import { AzureDevOpsWebhookHandler } from './azure-devops/webhook-handler.js';
+
+const handler = new AzureDevOpsWebhookHandler({
+  secret: process.env.WEBHOOK_SECRET,
+  autoAnalyze: true,
+  modes: {
+    learning: ['develop'],
+    enforcement: ['main', 'release/*']
+  }
+});
+
+app.post('/webhook/azure-devops', async (req, res) => {
+  const event = req.body;
+
+  if (event.eventType === 'git.pullrequest.created') {
+    await handler.handlePRCreated(event);
+  } else if (event.eventType === 'git.pullrequest.updated') {
+    await handler.handlePRUpdated(event);
+  }
+
+  res.status(200).send('OK');
+});
+```
+
+### Ejercicio 6.8: Métricas y Performance
+
+El cliente incluye métricas automáticas:
+
+```bash
+node -e "
+const { AzureDevOpsClient } = require('./dist/src/azure-devops/client.js');
+// ... setup ...
+
+const metrics = client.getPerformanceMetrics();
+
+console.log('📊 Métricas de Performance:');
+console.log('Operaciones ejecutadas:', metrics.totalOperations);
+console.log('Tiempo promedio:', metrics.averageLatency, 'ms');
+console.log('Cache hits:', metrics.cacheHits);
+console.log('Rate limit hits:', metrics.rateLimitHits);
+console.log('Retries ejecutados:', metrics.totalRetries);
+"
+```
+
+**Salida:**
+```
+📊 Métricas de Performance:
+Operaciones ejecutadas: 147
+Tiempo promedio: 234 ms
+Cache hits: 89 (60.5%)
+Rate limit hits: 2
+Retries ejecutados: 5
+```
+
+### Ejercicio 6.9: Retry Logic y Rate Limiting
+
+El cliente maneja automáticamente:
+
+**Retry con Exponential Backoff:**
+```typescript
+// Configuración
+retryPolicy: {
+  maxRetries: 3,              // Máximo 3 reintentos
+  retryDelayMs: 1000,         // 1 segundo inicial
+  backoffMultiplier: 2,       // Duplica cada vez
+  retryableStatusCodes: [429, 500, 502, 503, 504]
+}
+
+// Secuencia real:
+Attempt 1: Error 503 → Wait 1s
+Attempt 2: Error 503 → Wait 2s  (1s * 2)
+Attempt 3: Error 503 → Wait 4s  (2s * 2)
+Attempt 4: Success ✅
+```
+
+**Rate Limiting:**
+```typescript
+// Respeta Retry-After header
+if (response.headers['retry-after']) {
+  const retryAfter = parseInt(response.headers['retry-after']);
+  await sleep(Math.min(retryAfter * 1000, 30000)); // Max 30s
+}
+
+// Jitter para evitar thundering herd
+const jitter = Math.random() * 1000;
+await sleep(baseDelay + jitter);
+```
+
+### 🎯 Checkpoint 5 (Azure DevOps)
+
+**¿Qué hemos aprendido?**
+
+| Capacidad | Descripción | Status |
+|-----------|-------------|--------|
+| **Autenticación** | PAT con scopes correctos | ✅ |
+| **Configuración** | Variables env o JSON | ✅ |
+| **Listar PRs** | Obtener PRs activos/completados | ✅ |
+| **Analizar PR** | Detectar violaciones en archivos | ✅ |
+| **Comentarios Inline** | Posts en líneas específicas | ✅ |
+| **Status Checks** | Bloquear/aprobar merge | ✅ |
+| **Thread Management** | Resolver/actualizar threads | ✅ |
+| **Webhooks** | Análisis automático | ✅ |
+| **Retry Logic** | Manejo de errores/rate limits | ✅ |
+| **Métricas** | Performance tracking | ✅ |
+
+**Flujo completo de PR en Azure DevOps:**
+
+```
+Developer crea PR
+  ↓
+Webhook dispara análisis
+  ↓
+Bot descarga archivos modificados
+  ↓
+Pipeline Analyzer detecta 3 issues
+  ↓
+Bot posta 3 comentarios inline
+  ↓
+Bot posta resumen general
+  ↓
+[ENFORCEMENT MODE] Status check: FAILED
+  ↓
+Developer corrige issues
+  ↓
+Developer hace push
+  ↓
+Webhook dispara re-análisis
+  ↓
+Nuevos resultados: 0 issues
+  ↓
+Bot marca threads como resolved
+  ↓
+Status check: PASSED ✅
+  ↓
+Merge permitido
+```
+
+**Comparación GitHub vs Azure DevOps:**
+
+| Feature | GitHub | Azure DevOps | Notas |
+|---------|--------|--------------|-------|
+| Comentarios inline | ✅ | ✅ | Misma funcionalidad |
+| Status checks | ✅ | ✅ | Bloqueo de merge |
+| Re-análisis automático | ✅ | ✅ | Vía webhooks |
+| Thread management | ⚠️ Básico | ✅ Avanzado | Azure permite resolve |
+| Work Items linking | ❌ | ✅ | Azure exclusivo |
+| Policy integration | ❌ | ✅ | Azure exclusivo |
+
+---
+
+## 11. Parte 6: Gestión de Wiki y Métricas
 
 ### Objetivo
 Aprender a gestionar estándares corporativos, versionado de políticas y métricas de adopción.
 
-### Ejercicio 5.1: Ver Estándares Actuales
+### Ejercicio 6.1: Ver Estándares Actuales
 
 ```bash
 node dist/cli/wiki-cli.js standards --list
@@ -1456,7 +2096,7 @@ node dist/cli/wiki-cli.js standards --list
 📝 Total: 18 rules (8 mandatory, 6 recommended, 4 forbidden)
 ```
 
-### Ejercicio 5.2: Ver Templates Disponibles
+### Ejercicio 6.2: Ver Templates Disponibles
 
 ```bash
 node dist/cli/wiki-cli.js templates --list
@@ -1488,7 +2128,7 @@ node dist/cli/wiki-cli.js templates --list
 Total templates: 3
 ```
 
-### Ejercicio 5.3: Ver Métricas de Adopción
+### Ejercicio 6.3: Ver Métricas de Adopción
 
 ```bash
 node dist/cli/wiki-cli.js metrics --current
@@ -1536,7 +2176,7 @@ Date: 2025-01-18
   High Issues:      34     (↓ 12)
 ```
 
-### Ejercicio 5.4: Generar Reporte Mensual
+### Ejercicio 6.4: Generar Reporte Mensual
 
 ```bash
 node dist/cli/wiki-cli.js metrics \
@@ -1590,7 +2230,7 @@ node dist/cli/wiki-cli.js metrics \
 - Achieve 80% of pipelines >90% score
 ```
 
-### Ejercicio 5.5: Monitorear Cambios en Wiki
+### Ejercicio 6.5: Monitorear Cambios en Wiki
 
 Para actualizar automáticamente cuando los estándares cambien:
 
@@ -1626,7 +2266,7 @@ node dist/cli/wiki-cli.js watch \
            📧 Notification sent to #devops-alerts channel
 ```
 
-### Ejercicio 5.6: Versionado de Políticas
+### Ejercicio 6.6: Versionado de Políticas
 
 ```bash
 # Ver historial de versiones
@@ -1685,7 +2325,7 @@ node dist/cli/wiki-cli.js rollback --version 1.2.1
 
 ---
 
-## 11. Demo Completa End-to-End
+## 12. Demo Completa End-to-End
 
 ### Escenario: Crear un nuevo microservicio desde cero
 
@@ -1842,7 +2482,7 @@ Click "Merge pull request" → Pipeline se ejecuta en Azure DevOps automáticame
 
 ---
 
-## 12. Casos de Uso Reales
+## 13. Casos de Uso Reales
 
 ### Caso 1: Migración de 50 pipelines legacy
 
@@ -1937,7 +2577,7 @@ pipeline-assistant suggest \
 
 ---
 
-## 13. Roadmap y Futuro
+## 14. Roadmap y Futuro
 
 ### v1.0 (Actual) ✅
 
@@ -2133,7 +2773,7 @@ pipeline-assistant analyze \
 
 ---
 
-## 14. Preguntas Frecuentes
+## 15. Preguntas Frecuentes
 
 ### General
 
@@ -2516,6 +3156,26 @@ Ctrl+Shift+P → Pipeline Assistant: Generate
 Ctrl+Shift+P → Pipeline Assistant: Analyze Current File
 Ctrl+Shift+P → Pipeline Assistant: Show Wiki
 Ctrl+.       → Quick Fix
+```
+
+### Azure DevOps
+```bash
+# Configurar
+export AZDO_ORG_URL="https://dev.azure.com/tu-org"
+export AZDO_PAT="tu-pat"
+export AZDO_PROJECT="proyecto"
+
+# Listar PRs
+node dist/cli/azure-devops-cli.js list-prs
+
+# Analizar PR
+node dist/cli/azure-devops-cli.js analyze-pr --pr 123
+
+# Con comentarios inline
+node dist/cli/azure-devops-cli.js analyze-pr \
+  --pr 123 \
+  --post-comments \
+  --mode enforcement
 ```
 
 ---
