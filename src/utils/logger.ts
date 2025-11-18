@@ -10,8 +10,8 @@
 
 import pino from 'pino';
 
-// Patterns to mask in logs
-const SECRET_PATTERNS = [
+// Key patterns to mask in logs
+const SECRET_KEY_PATTERNS = [
   /password/i,
   /secret/i,
   /token/i,
@@ -20,10 +20,43 @@ const SECRET_PATTERNS = [
   /auth/i,
   /credential/i,
   /private[_-]?key/i,
+  /bearer/i,
+  /authorization/i,
+  /x-api-key/i,
+  /signature/i,
+];
+
+// Value patterns that indicate secrets (for string values)
+const SECRET_VALUE_PATTERNS = [
+  // Bearer tokens
+  /Bearer\s+[A-Za-z0-9\-_\.]+/gi,
+  // Base64 encoded secrets (common pattern)
+  /Basic\s+[A-Za-z0-9+/=]+/gi,
+  // Azure DevOps PAT format
+  /[a-z0-9]{52}/gi,
+  // JWT tokens
+  /eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+/g,
+  // Generic API keys (alphanumeric strings > 20 chars)
+  /[a-f0-9]{32,}/gi,
+  // URLs with embedded tokens
+  /https?:\/\/[^:]+:[^@]+@/gi,
 ];
 
 // Values to mask
 const MASK_VALUE = '***REDACTED***';
+
+/**
+ * Mask secrets in a string value
+ */
+function maskStringSecrets(str: string): string {
+  let result = str;
+  for (const pattern of SECRET_VALUE_PATTERNS) {
+    // Reset regex state for global patterns
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, MASK_VALUE);
+  }
+  return result;
+}
 
 /**
  * Recursively mask sensitive values in objects
@@ -34,7 +67,8 @@ function maskSecrets(obj: unknown): unknown {
   }
 
   if (typeof obj === 'string') {
-    return obj;
+    // Check if string contains sensitive patterns
+    return maskStringSecrets(obj);
   }
 
   if (Array.isArray(obj)) {
@@ -44,9 +78,12 @@ function maskSecrets(obj: unknown): unknown {
   if (typeof obj === 'object') {
     const masked: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
-      const shouldMask = SECRET_PATTERNS.some(pattern => pattern.test(key));
-      if (shouldMask && typeof value === 'string') {
+      const shouldMaskKey = SECRET_KEY_PATTERNS.some(pattern => pattern.test(key));
+      if (shouldMaskKey && typeof value === 'string') {
         masked[key] = MASK_VALUE;
+      } else if (typeof value === 'string') {
+        // Also check string values for embedded secrets
+        masked[key] = maskStringSecrets(value);
       } else {
         masked[key] = maskSecrets(value);
       }

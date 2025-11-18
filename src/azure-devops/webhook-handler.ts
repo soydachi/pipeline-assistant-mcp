@@ -14,11 +14,21 @@
  * @module azure-devops/webhook-handler
  */
 
+import * as crypto from 'crypto';
 import { AzureDevOpsPRBot, type PRAnalysisResult } from './pr-bot.js';
 import type { AzureDevOpsConfig } from './types.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  RateLimiter,
+  createWebhookRateLimiter,
+  type RateLimitResult,
+} from '../utils/rate-limiter.js';
 
 const logger = createLogger('WebhookHandler');
+
+// Signature validation constants
+const SIGNATURE_ALGORITHM = 'sha256';
+const SIGNATURE_PREFIX = 'sha256=';
 
 /**
  * Tipos de eventos de webhook soportados
@@ -79,6 +89,8 @@ export interface WebhookProcessingResult {
   skipReason?: string;
   error?: string;
   processingTimeMs: number;
+  /** Rate limit information */
+  rateLimit?: RateLimitResult;
 }
 
 /**
@@ -91,6 +103,10 @@ export interface WebhookHandlerOptions {
   autoAnalyze?: boolean;
   queueEnabled?: boolean;
   maxQueueSize?: number;
+  /** Enable rate limiting */
+  rateLimitEnabled?: boolean;
+  /** Max requests per minute per client */
+  rateLimitPerMinute?: number;
 }
 
 /**
@@ -107,6 +123,7 @@ export class WebhookHandler {
   private options: Required<WebhookHandlerOptions>;
   private processingQueue: WebhookPayload[] = [];
   private processing: boolean = false;
+  private rateLimiter: RateLimiter | null = null;
 
   constructor(
     bot: AzureDevOpsPRBot,
@@ -122,7 +139,17 @@ export class WebhookHandler {
       autoAnalyze: options.autoAnalyze !== false,
       queueEnabled: options.queueEnabled !== false,
       maxQueueSize: options.maxQueueSize || 100,
+      rateLimitEnabled: options.rateLimitEnabled || false,
+      rateLimitPerMinute: options.rateLimitPerMinute || 30,
     };
+
+    // Initialize rate limiter if enabled
+    if (this.options.rateLimitEnabled) {
+      this.rateLimiter = createWebhookRateLimiter({
+        maxRequests: this.options.rateLimitPerMinute,
+        name: 'webhook-handler',
+      });
+    }
   }
 
   /**
@@ -135,7 +162,8 @@ export class WebhookHandler {
    */
   async processWebhook(
     payload: WebhookPayload,
-    signature?: string
+    signature?: string,
+    clientId?: string
   ): Promise<WebhookProcessingResult> {
     const startTime = Date.now();
 
@@ -145,6 +173,23 @@ export class WebhookHandler {
     });
 
     try {
+      // Check rate limit if enabled
+      let rateLimitResult: RateLimitResult | undefined;
+      if (this.rateLimiter && clientId) {
+        rateLimitResult = this.rateLimiter.checkLimit(clientId);
+        if (!rateLimitResult.allowed) {
+          return {
+            success: false,
+            eventType: payload.eventType,
+            pullRequestId: payload.resource.pullRequestId,
+            skipped: true,
+            skipReason: 'Rate limit exceeded',
+            processingTimeMs: Date.now() - startTime,
+            rateLimit: rateLimitResult,
+          };
+        }
+      }
+
       // Validar firma si está habilitado
       if (this.options.validateSignature && signature) {
         const isValid = this.validateWebhookSignature(payload, signature);
@@ -152,7 +197,8 @@ export class WebhookHandler {
           return this.createErrorResult(
             payload,
             'Invalid webhook signature',
-            startTime
+            startTime,
+            rateLimitResult
           );
         }
       }
@@ -163,16 +209,17 @@ export class WebhookHandler {
         return this.createSkippedResult(
           payload,
           shouldProcess.reason || 'Event filtered out',
-          startTime
+          startTime,
+          rateLimitResult
         );
       }
 
       // Encolar o procesar directamente
       if (this.options.queueEnabled) {
-        return this.enqueueWebhook(payload, startTime);
+        return this.enqueueWebhook(payload, startTime, rateLimitResult);
       }
 
-      return await this.processWebhookInternal(payload, startTime);
+      return await this.processWebhookInternal(payload, startTime, rateLimitResult);
     } catch (error) {
       this.log('error', 'Failed to process webhook', {
         eventId: payload.id,
@@ -192,7 +239,8 @@ export class WebhookHandler {
    */
   private async processWebhookInternal(
     payload: WebhookPayload,
-    startTime: number
+    startTime: number,
+    rateLimit?: RateLimitResult
   ): Promise<WebhookProcessingResult> {
     const pullRequestId = payload.resource.pullRequestId;
 
@@ -200,7 +248,8 @@ export class WebhookHandler {
       return this.createSkippedResult(
         payload,
         'No pull request ID in payload',
-        startTime
+        startTime,
+        rateLimit
       );
     }
 
@@ -233,7 +282,8 @@ export class WebhookHandler {
           return this.createSkippedResult(
             payload,
             'No file changes detected',
-            startTime
+            startTime,
+            rateLimit
           );
         }
       }
@@ -248,6 +298,7 @@ export class WebhookHandler {
       analysisResult,
       skipped: false,
       processingTimeMs,
+      rateLimit,
     };
   }
 
@@ -315,7 +366,8 @@ export class WebhookHandler {
    */
   private enqueueWebhook(
     payload: WebhookPayload,
-    startTime: number
+    startTime: number,
+    rateLimit?: RateLimitResult
   ): WebhookProcessingResult {
     if (this.processingQueue.length >= this.options.maxQueueSize) {
       this.log('warn', 'Webhook queue is full, dropping event', {
@@ -326,7 +378,8 @@ export class WebhookHandler {
       return this.createSkippedResult(
         payload,
         'Queue is full',
-        startTime
+        startTime,
+        rateLimit
       );
     }
 
@@ -352,6 +405,7 @@ export class WebhookHandler {
       pullRequestId: payload.resource.pullRequestId,
       skipped: false,
       processingTimeMs: Date.now() - startTime,
+      rateLimit,
     };
   }
 
@@ -383,7 +437,11 @@ export class WebhookHandler {
   }
 
   /**
-   * Valida la firma del webhook
+   * Valida la firma del webhook usando HMAC-SHA256
+   *
+   * @param payload - El payload del webhook
+   * @param signature - La firma recibida en el header
+   * @returns true si la firma es válida
    */
   private validateWebhookSignature(
     payload: WebhookPayload,
@@ -394,31 +452,65 @@ export class WebhookHandler {
       return false;
     }
 
-    // Implement HMAC-SHA256 signature validation
-    // Azure DevOps sends signature in format: sha256=<hash>
-    const crypto = require('crypto');
+    // Validate signature format
+    if (!signature.startsWith(SIGNATURE_PREFIX)) {
+      this.log('warn', 'Invalid webhook signature format', {
+        expected: `${SIGNATURE_PREFIX}<hash>`,
+      });
+      return false;
+    }
+
+    // Extract the hash from the signature
+    const receivedHash = signature.slice(SIGNATURE_PREFIX.length);
+
+    // Calculate expected signature using HMAC-SHA256
     const payloadString = JSON.stringify(payload);
-    const expectedSignature = 'sha256=' + crypto
-      .createHmac('sha256', this.options.webhookSecret)
+    const expectedHash = crypto
+      .createHmac(SIGNATURE_ALGORITHM, this.options.webhookSecret)
       .update(payloadString, 'utf8')
       .digest('hex');
 
     // Use timing-safe comparison to prevent timing attacks
-    const signatureBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expectedSignature);
+    try {
+      const receivedBuffer = Buffer.from(receivedHash, 'hex');
+      const expectedBuffer = Buffer.from(expectedHash, 'hex');
 
-    if (signatureBuffer.length !== expectedBuffer.length) {
-      this.log('warn', 'Webhook signature length mismatch');
+      if (receivedBuffer.length !== expectedBuffer.length) {
+        this.log('warn', 'Webhook signature length mismatch');
+        return false;
+      }
+
+      const isValid = crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+
+      if (!isValid) {
+        this.log('warn', 'Webhook signature validation failed', {
+          eventId: payload.id,
+        });
+      }
+
+      return isValid;
+    } catch (error) {
+      this.log('error', 'Error validating webhook signature', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       return false;
     }
+  }
 
-    const isValid = crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
-
-    if (!isValid) {
-      this.log('warn', 'Webhook signature validation failed');
-    }
-
-    return isValid;
+  /**
+   * Generates a webhook signature for testing purposes
+   *
+   * @param payload - The webhook payload
+   * @param secret - The webhook secret
+   * @returns The signature in format "sha256=<hash>"
+   */
+  static generateSignature(payload: WebhookPayload, secret: string): string {
+    const payloadString = JSON.stringify(payload);
+    const hash = crypto
+      .createHmac(SIGNATURE_ALGORITHM, secret)
+      .update(payloadString, 'utf8')
+      .digest('hex');
+    return `${SIGNATURE_PREFIX}${hash}`;
   }
 
   /**
@@ -427,7 +519,8 @@ export class WebhookHandler {
   private createErrorResult(
     payload: WebhookPayload,
     error: string,
-    startTime: number
+    startTime: number,
+    rateLimit?: RateLimitResult
   ): WebhookProcessingResult {
     return {
       success: false,
@@ -436,6 +529,7 @@ export class WebhookHandler {
       skipped: false,
       error,
       processingTimeMs: Date.now() - startTime,
+      rateLimit,
     };
   }
 
@@ -445,7 +539,8 @@ export class WebhookHandler {
   private createSkippedResult(
     payload: WebhookPayload,
     reason: string,
-    startTime: number
+    startTime: number,
+    rateLimit?: RateLimitResult
   ): WebhookProcessingResult {
     return {
       success: true,
@@ -454,6 +549,7 @@ export class WebhookHandler {
       skipped: true,
       skipReason: reason,
       processingTimeMs: Date.now() - startTime,
+      rateLimit,
     };
   }
 
@@ -477,6 +573,35 @@ export class WebhookHandler {
   clearQueue(): void {
     this.processingQueue = [];
     this.log('info', 'Webhook queue cleared');
+  }
+
+  /**
+   * Gets rate limit status for a client
+   */
+  getRateLimitStatus(clientId: string): RateLimitResult | null {
+    if (!this.rateLimiter) {
+      return null;
+    }
+    return this.rateLimiter.getStatus(clientId);
+  }
+
+  /**
+   * Resets rate limit for a client
+   */
+  resetRateLimit(clientId: string): void {
+    if (this.rateLimiter) {
+      this.rateLimiter.reset(clientId);
+    }
+  }
+
+  /**
+   * Stops the webhook handler and cleans up resources
+   */
+  stop(): void {
+    if (this.rateLimiter) {
+      this.rateLimiter.stop();
+    }
+    this.clearQueue();
   }
 
   /**
