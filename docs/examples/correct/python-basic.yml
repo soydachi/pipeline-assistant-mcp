@@ -1,0 +1,158 @@
+# Pipeline CI/CD Autogenerado
+# Generado por: Pipeline Assistant MCP
+# Plataforma: Azure Pipelines
+# Fecha: 2025-11-18T17:43:43.561Z
+# Tipo de proyecto: python
+# Ambiente: dev
+# Basado en: wiki/standards/pipeline-standards.md
+
+trigger:
+  branches:
+    include:
+      - feature/*
+      - develop
+  paths:
+    exclude:
+      - '*.md'
+      - docs/*
+      - .github/*
+pr:
+  - main
+  - develop
+pool:
+  vmImage: ubuntu-latest
+variables:
+  - group: dev-variables
+  - name: buildConfiguration
+    value: Debug
+  - name: pythonVersion
+    value: '3.11'
+stages:
+  - stage: Validate
+    displayName: Code Validation
+    jobs:
+      - job: Lint
+        displayName: Linting & Format Check
+        steps:
+          - task: UsePythonVersion@0
+            displayName: Install Python
+            inputs:
+              versionSpec: '3.11'
+              addToPath: true
+          - script: pip install -r requirements.txt
+            displayName: Install Dependencies
+          - script: flake8 . && black --check .
+            displayName: Lint & Format Check
+  - stage: Security
+    displayName: Security Scanning
+    dependsOn:
+      - Validate
+    jobs:
+      - job: SecretScan
+        displayName: Secret Detection
+        steps:
+          - script: |-
+              docker run --rm -v "$(Build.SourcesDirectory):/src" \
+                trufflesecurity/trufflehog:latest \
+                filesystem /src \
+                --fail \
+                --no-update
+            displayName: TruffleHog Secret Scan
+            continueOnError: false
+      - job: SAST
+        displayName: Static Analysis
+        steps:
+          - task: SonarQubePrepare@6
+            displayName: Prepare SonarQube Analysis
+            inputs:
+              SonarQube: SonarQube-Connection
+              scannerMode: CLI
+              configMode: manual
+              cliProjectKey: $(Build.Repository.Name)
+              cliSources: .
+              extraProperties: |-
+                sonar.python.coverage.reportPaths=coverage.xml
+                sonar.python.xunit.reportPath=test-results.xml
+          - task: SonarQubeAnalyze@6
+            displayName: Run SonarQube Analysis
+          - task: SonarQubePublish@6
+            displayName: Publish SonarQube Results
+            inputs:
+              pollingTimeoutSec: '300'
+      - job: DependencyScan
+        displayName: Dependency Scanning
+        steps:
+          - task: UsePythonVersion@0
+            displayName: Install Python
+            inputs:
+              versionSpec: '3.11'
+              addToPath: true
+          - script: pip install safety && safety check -r requirements.txt
+            displayName: Python Safety Check
+          - task: SnykSecurityScan@1
+            displayName: Snyk Security Scan
+            inputs:
+              serviceConnectionEndpoint: Snyk-Connection
+              testType: app
+              severityThreshold: high
+              failOnIssues: true
+  - stage: Build
+    displayName: Build Application
+    dependsOn:
+      - Security
+    jobs:
+      - job: BuildApp
+        displayName: Build python Application
+        steps:
+          - task: UsePythonVersion@0
+            displayName: Install Python
+            inputs:
+              versionSpec: '3.11'
+              addToPath: true
+          - script: pip install -r requirements.txt
+            displayName: Install Dependencies
+          - script: python setup.py build
+            displayName: Build Application
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Artifact: drop'
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)
+              ArtifactName: drop
+              publishLocation: Container
+  - stage: Test
+    displayName: Testing
+    dependsOn:
+      - Build
+    jobs:
+      - job: UnitTests
+        displayName: Unit Tests
+        steps:
+          - task: UsePythonVersion@0
+            displayName: Install Python
+            inputs:
+              versionSpec: '3.11'
+              addToPath: true
+          - script: pip install -r requirements.txt pytest pytest-cov
+            displayName: Install Dependencies
+          - script: pytest --cov=. --cov-report=xml --junitxml=test-results.xml
+            displayName: Run Tests
+          - task: PublishTestResults@2
+            displayName: Publish Test Results
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: test-results.xml
+              failTaskOnFailedTests: true
+          - task: PublishCodeCoverageResults@2
+            displayName: Publish Code Coverage
+            inputs:
+              summaryFileLocation: coverage.xml
+  - stage: DeployDev
+    displayName: Deploy to Dev
+    dependsOn:
+      - Test
+    jobs:
+      - job: Deploy
+        displayName: Deploy to dev Environment
+        steps:
+          - script: echo "Deploying to dev..."
+            displayName: Deploy Application

@@ -1,0 +1,79 @@
+# Pipeline sin Coverage Reporting
+# Este pipeline viola QUAL-001: Tests Without Coverage
+# Score esperado: ~55/100
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: dev-variables
+  - name: dotnetVersion
+    value: '8.x'
+
+stages:
+  - stage: Build
+    displayName: 'Build Application'
+    jobs:
+      - job: BuildJob
+        displayName: 'Build'
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK'
+            inputs:
+              packageType: 'sdk'
+              version: '$(dotnetVersion)'
+
+          - script: dotnet restore
+            displayName: 'Restore Dependencies'
+
+          - script: dotnet build --configuration Release
+            displayName: 'Build Application'
+
+  - stage: Test
+    displayName: 'Run Tests'
+    dependsOn: Build
+    jobs:
+      - job: TestJob
+        displayName: 'Unit Tests'
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK'
+            inputs:
+              packageType: 'sdk'
+              version: '$(dotnetVersion)'
+
+          # PROBLEMA: Tests sin --collect:"XPlat Code Coverage"
+          - script: dotnet test
+            displayName: 'Run Tests'
+
+          # PROBLEMA: Sin PublishTestResults
+          # PROBLEMA: Sin PublishCodeCoverageResults
+          # PROBLEMA: Sin quality gates para coverage minimo
+
+  - stage: Deploy
+    displayName: 'Deploy'
+    dependsOn: Test
+    jobs:
+      - job: DeployJob
+        displayName: 'Deploy'
+        steps:
+          - script: echo "Deploying..."
+            displayName: 'Deploy Application'
+
+# Solucion recomendada:
+# - script: dotnet test --collect:"XPlat Code Coverage" --logger trx
+#   displayName: 'Run Tests with Coverage'
+#
+# - task: PublishTestResults@2
+#   inputs:
+#     testResultsFormat: 'VSTest'
+#     testResultsFiles: '**/*.trx'
+#
+# - task: PublishCodeCoverageResults@2
+#   inputs:
+#     summaryFileLocation: '**/coverage.cobertura.xml'

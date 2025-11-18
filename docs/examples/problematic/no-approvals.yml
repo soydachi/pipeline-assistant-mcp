@@ -1,0 +1,89 @@
+# Pipeline sin Approval Gates
+# Este pipeline viola POL-002: No Approval Gates for Production
+# Score esperado: ~50/100
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: production-variables
+  - name: buildConfiguration
+    value: 'Release'
+
+stages:
+  - stage: Build
+    displayName: 'Build Application'
+    jobs:
+      - job: BuildJob
+        displayName: 'Build'
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK'
+            inputs:
+              packageType: 'sdk'
+              version: '8.x'
+
+          - script: dotnet restore
+            displayName: 'Restore Dependencies'
+
+          - script: dotnet build --configuration $(buildConfiguration)
+            displayName: 'Build Application'
+
+          - script: dotnet publish --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)
+            displayName: 'Publish Application'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Artifacts'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+
+  - stage: Test
+    displayName: 'Run Tests'
+    dependsOn: Build
+    jobs:
+      - job: TestJob
+        displayName: 'Unit Tests'
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK'
+            inputs:
+              packageType: 'sdk'
+              version: '8.x'
+
+          - script: dotnet test --configuration $(buildConfiguration)
+            displayName: 'Run Tests'
+
+  # PROBLEMA: Deploy directo a produccion sin approval gates
+  - stage: DeployProduction
+    displayName: 'Deploy to Production'
+    dependsOn: Test
+    # PROBLEMA: Sin condition para verificar branch
+    # PROBLEMA: Sin environment con approval policies
+    jobs:
+      - job: DeployJob
+        displayName: 'Deploy'
+        steps:
+          # PROBLEMA: Sin smoke tests
+          # PROBLEMA: Sin rollback strategy
+          - script: |
+              echo "Deploying directly to production..."
+              echo "This is dangerous without approvals!"
+            displayName: 'Deploy Application'
+
+# Solucion recomendada:
+# - stage: DeployProduction
+#     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+#     jobs:
+#       - deployment: DeployProd
+#         environment: 'production'  # Configurar approval en Azure DevOps
+#         strategy:
+#           runOnce:
+#             deploy:
+#               steps:
+#                 - script: echo "Deploying..."

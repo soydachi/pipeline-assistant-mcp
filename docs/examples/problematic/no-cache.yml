@@ -1,0 +1,86 @@
+# Pipeline sin Configuracion de Cache
+# Este pipeline viola PERF-001: No Cache Configuration
+# Score esperado: ~60/100
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: dev-variables
+  - name: buildConfiguration
+    value: 'Debug'
+
+stages:
+  - stage: Validate
+    displayName: 'Validation'
+    jobs:
+      - job: LintJob
+        displayName: 'Linting'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: '20.x'
+
+          # PROBLEMA: npm install sin cache - lento
+          - script: npm install
+            displayName: 'Install Dependencies'
+
+          - script: npm run lint
+            displayName: 'Run ESLint'
+
+  - stage: Build
+    displayName: 'Build Application'
+    dependsOn: Validate
+    jobs:
+      - job: BuildJob
+        displayName: 'Build'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: '20.x'
+
+          # PROBLEMA: Instalando dependencias de nuevo sin cache
+          - script: npm install
+            displayName: 'Install Dependencies'
+
+          - script: npm run build
+            displayName: 'Build Application'
+
+  - stage: Test
+    displayName: 'Run Tests'
+    dependsOn: Build
+    jobs:
+      - job: TestJob
+        displayName: 'Unit Tests'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: '20.x'
+
+          # PROBLEMA: Tercera vez instalando dependencias sin cache
+          - script: npm install
+            displayName: 'Install Dependencies'
+
+          - script: npm test -- --coverage
+            displayName: 'Run Tests'
+
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish Coverage'
+            inputs:
+              summaryFileLocation: 'coverage/cobertura-coverage.xml'
+
+# Solucion recomendada: Agregar Cache@2 task
+# - task: Cache@2
+#   inputs:
+#     key: 'npm | "$(Agent.OS)" | package-lock.json'
+#     path: $(npm_config_cache)
+#     restoreKeys: |
+#       npm | "$(Agent.OS)"

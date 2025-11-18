@@ -479,8 +479,8 @@ cli/                  # CLI tools
 vscode-extension/     # VS Code extension
 wiki/standards/       # Corporate standards v2.0
 tests/                # Test suite (341+ tests)
-examples/             # Example pipelines
 docs/                 # Documentation
+  examples/           # Example pipelines (problematic & correct)
 ```
 
 ### Step 2: Install Dependencies
@@ -645,11 +645,11 @@ Learn to detect security, compliance, and performance issues in existing pipelin
 
 ```bash
 # View the problematic pipeline
-cat examples/pipelines/pipeline-con-problemas.yml
+cat docs/examples/problematic/hardcoded-secrets.yml
 
 # Analyze it
 node dist/cli/pipeline-assistant.js analyze \
-  examples/pipelines/pipeline-con-problemas.yml
+  -f docs/examples/problematic/hardcoded-secrets.yml
 ```
 
 **Expected output:**
@@ -680,7 +680,7 @@ Low Issues (2):
 
 ```bash
 node dist/cli/pipeline-assistant.js analyze \
-  examples/pipelines/pipeline-arreglado.yml
+  -f docs/examples/correct/dotnet-basic.yml
 ```
 
 **Expected output:**
@@ -700,8 +700,8 @@ Recommendations (2):
 ### Exercise 2.3: Compare Before/After
 
 ```bash
-diff examples/pipelines/pipeline-con-problemas.yml \
-     examples/pipelines/pipeline-arreglado.yml
+diff docs/examples/problematic/hardcoded-secrets.yml \
+     docs/examples/correct/dotnet-basic.yml
 ```
 
 ### Checkpoint 2
