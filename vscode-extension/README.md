@@ -4,7 +4,9 @@ Real-time pipeline analysis, quick fixes, and intelligent snippets for Azure Dev
 
 ## Features
 
+- **Multi-Platform Support** - Azure DevOps and GitHub Actions
 - **Real-time Analysis** - Issues appear as you type
+- **Template Validation** - Detects invalid tasks, cross-platform syntax errors, and security issues
 - **Quick Fixes** - One-click fixes for common problems
 - **35+ Snippets** - Smart autocompletion for pipeline tasks
 - **Wiki Viewer** - Browse standards in sidebar
@@ -71,10 +73,28 @@ Type `stage-` to see available snippets:
 
 | Severity | Examples |
 |----------|----------|
-| Critical | Missing mandatory stages, hardcoded secrets |
-| High | No security scanning, unsafe triggers |
-| Medium | Performance optimizations |
+| Critical | Missing mandatory stages, hardcoded secrets, invalid tasks |
+| High | No security scanning, unsafe triggers, cross-platform syntax errors |
+| Medium | Outdated actions/tasks, performance optimizations |
 | Low | Code style suggestions |
+
+## Validation Features
+
+The extension validates templates for:
+
+**Azure DevOps:**
+- Invalid tasks (TruffleHog@, Trivy@, Snyk@1 instead of SnykSecurityScan@1)
+- Outdated tasks (SonarQube@5 instead of @6)
+- GitHub Actions syntax in Azure templates (`${{ }}` instead of `$()`)
+
+**GitHub Actions:**
+- Outdated actions (checkout@v3 instead of @v4)
+- Azure DevOps syntax in GitHub templates (`$()` instead of `${{ }}`)
+- Invalid task syntax (`task:` instead of `uses:`)
+
+**Security:**
+- Hardcoded passwords, API keys, secrets, tokens
+- Missing security stages/jobs
 
 ## Troubleshooting
 

@@ -47,7 +47,7 @@ Result: Insecure, slow, incomplete pipeline
 
 **With Pipeline Assistant:**
 ```
-Developer: "node dist/cli/pipeline-assistant.js generate --type dotnet"
+Developer: "node dist/cli/pipeline-assistant.js generate --platform azure-devops --type dotnet"
 
 5 seconds later...
 - Complete pipeline generated
@@ -81,6 +81,8 @@ Developer Interfaces         Core Services              Data Sources
 | **Pipeline Analyzer** | Security and compliance analysis | `src/pipeline-analyzer.ts` |
 | **Policy Enforcer** | Applies corporate policies | `src/policy-enforcer.ts` |
 | **Wiki Manager** | Standards and metrics management | `src/wiki-manager.ts` |
+| **Platform Adapters** | Multi-platform support (Azure/GitHub) | `src/platforms/` |
+| **Template Validator** | Validate templates for issues | `src/validators/` |
 | **Azure DevOps Client** | PR Bot and webhook integration | `src/azure-devops/` |
 
 ---
@@ -169,9 +171,9 @@ npm test
 
 **Expected output:**
 ```
-Test Files  15 passed (15)
-     Tests  259 passed (259)
-  Duration  <1s
+Test Files  22 passed (22)
+     Tests  341 passed (341)
+  Duration  <2s
 ```
 
 If all tests pass, your environment is ready!
@@ -200,15 +202,17 @@ Learn to automatically generate complete pipelines according to corporate standa
 
 ```bash
 node dist/cli/pipeline-assistant.js generate \
+  --platform azure-devops \
   --type dotnet \
   --output my-first-pipeline.yml
 ```
 
 **What just happened?**
 
-1. **Pipeline Generator** read the .NET template from `wiki/standards/templates/`
-2. Applied all **mandatory** policies from `wiki/standards/pipeline-standards.md`
-3. Generated a complete pipeline with:
+1. **Pipeline Generator** used the Azure DevOps platform adapter from `src/platforms/`
+2. Read the .NET template from `wiki/standards/platforms/azure/templates/`
+3. Applied all **mandatory** policies from `wiki/standards/pipeline-standards.md`
+4. Generated a complete pipeline with:
    - Validate stage (linting)
    - Security stage (TruffleHog, SonarQube, Snyk)
    - Build stage
@@ -226,6 +230,7 @@ Generate a more complex pipeline including Redis and Azure SQL:
 
 ```bash
 node dist/cli/pipeline-assistant.js generate \
+  --platform azure-devops \
   --type dotnet \
   --services redis,azuresql \
   --env production \
@@ -245,18 +250,20 @@ Additional configuration for:
 diff my-first-pipeline.yml pipeline-with-services.yml
 ```
 
-### Exercise 1.3: Generate Node.js Pipeline
+### Exercise 1.3: Generate Node.js Pipeline for GitHub Actions
 
 ```bash
 node dist/cli/pipeline-assistant.js generate \
+  --platform github-actions \
   --type node \
   --services cosmosdb,servicebus \
   --output pipeline-nodejs.yml
 ```
 
-**Differences from .NET:**
-- Uses `NodeTool@0` instead of `UseDotNet@2`
-- Includes `npm ci` with cache
+**Differences from Azure DevOps .NET:**
+- Uses `actions/setup-node@v4` instead of `NodeTool@0` or `UseDotNet@2`
+- Uses `uses:` syntax instead of `task:` syntax
+- Includes `npm ci` with cache via `actions/cache@v4`
 - Runs `npm audit` for dependency scanning
 - Tests with `npm test`
 
@@ -268,6 +275,7 @@ node dist/cli/pipeline-assistant.js generate --help
 
 **Available options:**
 ```
+--platform <platform>  Target platform (azure-devops|github-actions) [required]
 --type <type>          Project type (dotnet|node|python|java|go)
 --services <services>  Azure services (redis,azuresql,keyvault,cosmosdb,servicebus,storage)
 --env <environment>    Target environment (dev|staging|production)
@@ -279,13 +287,15 @@ node dist/cli/pipeline-assistant.js generate --help
 
 **What we learned:**
 - How to generate complete pipelines automatically
-- Differences between technologies
+- Multi-platform support (Azure DevOps and GitHub Actions)
+- Differences between technologies and platforms
 - How to include Azure services
 - Security policies applied automatically
 
 **Try it yourself:**
 ```bash
 node dist/cli/pipeline-assistant.js generate \
+  --platform azure-devops \
   --type python \
   --services storage,servicebus \
   --output my-python-pipeline.yml

@@ -1,0 +1,215 @@
+# Security Tools Mapping - Platform Agnostic
+# Maps security tool categories to platform-specific implementations
+
+secret_scanning:
+  id: SEC-001
+  name: Secret Scanning
+  description: Detect hardcoded secrets, API keys, and credentials
+  required: true
+
+  azure:
+    # Primary: TruffleHog via Docker (works everywhere)
+    primary:
+      type: script
+      script: |
+        docker run --rm -v "$(Build.SourcesDirectory):/src" \
+          trufflesecurity/trufflehog:latest \
+          filesystem /src --fail --no-update
+      displayName: 'TruffleHog Secret Scan'
+      continueOnError: false
+
+    # Alternative: Microsoft Security DevOps
+    alternative:
+      task: MicrosoftSecurityDevOps@1
+      inputs:
+        categories: 'secrets'
+
+  github:
+    primary:
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.pull_request.base.sha }}
+        head: ${{ github.event.pull_request.head.sha }}
+        extra_args: --fail
+
+    alternative:
+      # GitHub native secret scanning (Enterprise only)
+      type: native
+      note: Requires GitHub Advanced Security license
+
+sast:
+  id: SEC-002
+  name: Static Application Security Testing
+  description: Analyze source code for security vulnerabilities
+  required: true
+
+  azure:
+    primary:
+      - task: SonarQubePrepare@6
+        displayName: 'Prepare SonarQube Analysis'
+        inputs:
+          SonarQube: 'SonarQube-Connection'
+          scannerMode: 'CLI'
+          configMode: 'manual'
+          cliProjectKey: '$(Build.Repository.Name)'
+          extraProperties: |
+            sonar.sources=.
+      - task: SonarQubeAnalyze@6
+        displayName: 'Run SonarQube Analysis'
+      - task: SonarQubePublish@6
+        displayName: 'Publish SonarQube Results'
+        inputs:
+          pollingTimeoutSec: '300'
+
+  github:
+    primary:
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      with:
+        args: >
+          -Dsonar.organization=${{ vars.SONAR_ORG }}
+          -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+
+  # Language-specific SonarQube properties
+  language_properties:
+    dotnet:
+      - sonar.cs.opencover.reportsPaths=**/coverage.opencover.xml
+      - sonar.cs.vstest.reportsPaths=**/*.trx
+    node:
+      - sonar.javascript.lcov.reportPaths=coverage/lcov.info
+      - sonar.typescript.lcov.reportPaths=coverage/lcov.info
+    python:
+      - sonar.python.coverage.reportPaths=coverage.xml
+      - sonar.python.xunit.reportPath=test-results.xml
+
+dependency_scanning:
+  id: SEC-003
+  name: Software Composition Analysis
+  description: Scan dependencies for known vulnerabilities
+  required: true
+
+  azure:
+    primary:
+      task: SnykSecurityScan@1
+      displayName: 'Snyk Security Scan'
+      inputs:
+        serviceConnectionEndpoint: 'Snyk-Connection'
+        testType: 'app'
+        severityThreshold: 'high'
+        failOnIssues: true
+
+    # Language-specific audits (run before Snyk)
+    language_audits:
+      node:
+        script: npm audit --audit-level=high
+        displayName: 'NPM Security Audit'
+      dotnet:
+        script: dotnet list package --vulnerable --include-transitive
+        displayName: '.NET Vulnerability Check'
+      python:
+        script: pip install safety && safety check -r requirements.txt
+        displayName: 'Python Safety Check'
+
+  github:
+    primary:
+      uses: snyk/actions/node@master
+      with:
+        args: --severity-threshold=high
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+    # Language-specific actions
+    language_actions:
+      node:
+        uses: snyk/actions/node@master
+      dotnet:
+        uses: snyk/actions/dotnet@master
+      python:
+        uses: snyk/actions/python@master
+
+container_scanning:
+  id: SEC-004
+  name: Container Image Scanning
+  description: Scan container images for vulnerabilities
+  required: false
+  condition: usesDocker
+
+  azure:
+    primary:
+      type: script
+      script: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:latest image \
+          --exit-code 1 \
+          --severity CRITICAL,HIGH \
+          $(imageRepository):$(Build.BuildId)
+      displayName: 'Trivy Container Scan'
+      continueOnError: false
+
+    alternative:
+      task: MicrosoftSecurityDevOps@1
+      inputs:
+        categories: 'containers'
+
+  github:
+    primary:
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH'
+
+dockerfile_linting:
+  id: SEC-005
+  name: Dockerfile Linting
+  description: Lint Dockerfiles for best practices
+  required: false
+  condition: usesDocker
+
+  azure:
+    primary:
+      type: script
+      script: |
+        docker run --rm -i hadolint/hadolint < Dockerfile
+      displayName: 'Hadolint Dockerfile Check'
+
+  github:
+    primary:
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile
+        failure-threshold: warning
+
+infrastructure_scanning:
+  id: SEC-006
+  name: Infrastructure as Code Scanning
+  description: Scan IaC templates for misconfigurations
+  required: false
+  condition: hasInfrastructure
+
+  azure:
+    primary:
+      task: MicrosoftSecurityDevOps@1
+      inputs:
+        categories: 'IaC'
+
+    alternative:
+      type: script
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory):/src \
+          bridgecrew/checkov -d /src --framework all
+      displayName: 'Checkov IaC Scan'
+
+  github:
+    primary:
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: .
+        framework: all
+        soft_fail: false

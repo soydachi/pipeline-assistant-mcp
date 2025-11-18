@@ -25,8 +25,9 @@ Pipeline Assistant provides three CLI tools:
 Main tool for generating and analyzing pipelines.
 
 ```bash
-# Generate pipeline
+# Generate pipeline (platform required)
 node dist/cli/pipeline-assistant.js generate \
+  --platform <azure-devops|github-actions> \
   --type <dotnet|node|python|java|go> \
   --env <dev|staging|production> \
   --services <redis,azuresql,keyvault,cosmosdb,servicebus,storage> \
@@ -41,6 +42,15 @@ node dist/cli/pipeline-assistant.js analyze \
 node dist/cli/pipeline-assistant.js suggest \
   --file <pipeline.yml> \
   --focus <security|performance|compliance|quality>
+
+# List available platforms
+node dist/cli/pipeline-assistant.js platforms
+
+# List available templates
+node dist/cli/pipeline-assistant.js templates --platform azure-devops
+
+# List available services
+node dist/cli/pipeline-assistant.js services
 ```
 
 ### Wiki CLI
@@ -406,19 +416,22 @@ node dist/cli/pipeline-assistant.js analyze \
 ### Generate Different Project Types
 
 ```bash
-# .NET with Azure services
+# .NET with Azure services for Azure DevOps
 node dist/cli/pipeline-assistant.js generate \
+  --platform azure-devops \
   --type dotnet \
   --services redis,azuresql,keyvault \
   --env production
 
-# Node.js basic
+# Node.js basic for GitHub Actions
 node dist/cli/pipeline-assistant.js generate \
+  --platform github-actions \
   --type node \
   --env dev
 
-# Python with Service Bus
+# Python with Service Bus for Azure DevOps
 node dist/cli/pipeline-assistant.js generate \
+  --platform azure-devops \
   --type python \
   --services servicebus,storage \
   --env staging

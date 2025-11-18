@@ -3,13 +3,15 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/Tests-259%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-341%20passing-brightgreen)](tests/)
 
 An intelligent CI/CD pipeline assistant powered by [Model Context Protocol (MCP)](https://modelcontextprotocol.io). Automatically generates, validates, and improves Azure DevOps and GitHub Actions pipelines according to corporate standards and DevSecOps best practices.
 
 ## Features
 
+- **Multi-Platform Support** - Generate pipelines for Azure DevOps and GitHub Actions with correct syntax
 - **Pipeline Generation** - Create complete pipelines from templates (.NET, Node.js, Python, Java, Go)
+- **Template Validation** - Validate templates for invalid tasks, cross-platform syntax, and security issues
 - **Security Analysis** - Detect hardcoded secrets, missing security stages, and 15+ vulnerability types
 - **Compliance Scoring** - Calculate 0-100 scores with detailed breakdowns
 - **Multiple Integrations** - VS Code extension, GitHub Actions, Azure DevOps PR Bot
@@ -37,11 +39,20 @@ npm test
 ### Basic Usage
 
 ```bash
-# Generate a pipeline
-node dist/cli/pipeline-assistant.js generate --type node --env production
+# Generate a pipeline for Azure DevOps
+node dist/cli/pipeline-assistant.js generate --platform azure-devops --type node --env production
+
+# Generate a pipeline for GitHub Actions
+node dist/cli/pipeline-assistant.js generate --platform github-actions --type python --env staging
 
 # Analyze a pipeline
 node dist/cli/pipeline-assistant.js analyze examples/pipelines/pipeline-con-problemas.yml
+
+# List available platforms
+node dist/cli/pipeline-assistant.js platforms
+
+# List available templates
+node dist/cli/pipeline-assistant.js templates --platform azure-devops
 
 # View standards
 node dist/cli/wiki-cli.js standards --list
@@ -67,6 +78,13 @@ pipeline-assistant-mcp/
 │   ├── policy-enforcer.ts
 │   ├── wiki-manager.ts
 │   ├── container.ts        # Dependency injection
+│   ├── platforms/          # Multi-platform support
+│   │   ├── index.ts        # Platform registry
+│   │   ├── types.ts        # Platform types
+│   │   ├── azure-devops.ts # Azure adapter
+│   │   └── github-actions.ts # GitHub adapter
+│   ├── validators/         # Validation utilities
+│   │   └── template-validator.ts
 │   ├── azure-devops/       # Azure DevOps integration
 │   │   ├── client.ts
 │   │   ├── pr-bot.ts
@@ -82,7 +100,8 @@ pipeline-assistant-mcp/
 │   └── pr-bot-cli.ts
 ├── vscode-extension/       # VS Code extension
 ├── wiki/standards/         # Corporate standards
-└── tests/                  # Test suite (259+ tests)
+│   └── platforms/          # Platform-specific templates
+└── tests/                  # Test suite (341+ tests)
 ```
 
 ## Integrations
@@ -138,7 +157,7 @@ See [Usage Guide](docs/USAGE.md) for detailed configuration.
 
 ```bash
 npm run dev          # Watch mode
-npm test             # Run tests (259+ tests)
+npm test             # Run tests (341+ tests)
 npm run lint         # Check code style
 npm run build        # Build project
 ```

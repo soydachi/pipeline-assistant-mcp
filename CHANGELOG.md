@@ -16,6 +16,42 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.0] - 2025-11-18
+
+### Added
+
+#### Multi-Platform Architecture
+- Platform adapters for Azure DevOps and GitHub Actions
+- Platform-specific template generation with correct syntax
+- Template validator with comprehensive checks
+- Automatic platform detection from YAML content
+
+#### Template Validation
+- Invalid/outdated task detection (TruffleHog@, Trivy@, Snyk@1, SonarQube@5)
+- Cross-platform syntax validation (detects wrong variable syntax)
+- Security pattern detection (hardcoded passwords, API keys, secrets, tokens)
+- YAML syntax validation
+- Mixed variable syntax detection in Azure DevOps
+
+#### Platform-Specific Features
+- Azure DevOps: SonarQube@6, SnykSecurityScan@1, Docker@2, PublishBuildArtifacts@1
+- GitHub Actions: actions/checkout@v4, actions/setup-node@v4, snyk/actions@master
+- Correct task mappings for security tools (TruffleHog, Trivy, Snyk, SonarCloud)
+
+#### Testing & Quality
+- 341+ tests with comprehensive coverage
+- Generator tests for both platforms (18 Azure, 23 GitHub)
+- Validator tests for template validation (22 active, 7 skipped edge cases)
+- Real template validation tests
+
+#### New CLI Commands
+- `platforms` - List available platforms
+- `templates` - List available templates by platform
+- `services` - List available service configurations
+- `--platform` flag for multi-platform support
+
+---
+
 ## [1.2.0] - 2025-11-18
 
 ### Added

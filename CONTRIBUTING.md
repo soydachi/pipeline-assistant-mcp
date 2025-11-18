@@ -56,6 +56,13 @@ src/                      # Core TypeScript source
 ├── policy-enforcer.ts    # Policy enforcement engine
 ├── wiki-manager.ts       # Wiki and standards management
 ├── container.ts          # Dependency injection container
+├── platforms/            # Multi-platform support
+│   ├── index.ts          # Platform registry and detection
+│   ├── types.ts          # Platform interfaces and types
+│   ├── azure-devops.ts   # Azure DevOps adapter
+│   └── github-actions.ts # GitHub Actions adapter
+├── validators/           # Validation utilities
+│   └── template-validator.ts # Template validation
 ├── azure-devops/         # Azure DevOps integration
 │   ├── client.ts         # API client with retry logic
 │   ├── pr-bot.ts         # PR analysis bot
@@ -79,13 +86,17 @@ vscode-extension/         # VS Code extension
 
 tests/                    # Test suite (Vitest)
 ├── *.test.ts             # Unit tests
+├── platforms/            # Platform adapter tests
+├── validators/           # Validator tests
 ├── azure-devops/         # Azure DevOps tests
 └── utils/                # Utility tests
 
 wiki/standards/           # Corporate standards
 ├── pipeline-standards.md # Standards definitions
 ├── security-policies.yaml# Security policies
-└── templates/            # Pipeline templates
+└── platforms/            # Platform-specific templates
+    ├── azure/templates/  # Azure DevOps templates
+    └── github/templates/ # GitHub Actions templates
 ```
 
 ## Code Standards
@@ -142,7 +153,7 @@ Before submitting:
 
 ```bash
 npm run lint        # Check code style
-npm test            # Run tests (259+ tests)
+npm test            # Run tests (341+ tests)
 npm run build       # Verify compilation
 ```
 

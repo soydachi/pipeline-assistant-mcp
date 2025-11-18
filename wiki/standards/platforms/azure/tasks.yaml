@@ -1,0 +1,210 @@
+# Azure DevOps Task Mappings
+# Valid task names and versions for Azure Pipelines
+
+runtime_setup:
+  node:
+    task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+    displayName: 'Install Node.js'
+
+  dotnet:
+    task: UseDotNet@2
+    inputs:
+      packageType: 'sdk'
+      version: '8.x'
+    displayName: 'Install .NET SDK'
+
+  python:
+    task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.11'
+      addToPath: true
+    displayName: 'Install Python'
+
+  java:
+    task: JavaToolInstaller@0
+    inputs:
+      versionSpec: '17'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+    displayName: 'Install Java'
+
+  go:
+    task: GoTool@0
+    inputs:
+      version: '1.21'
+    displayName: 'Install Go'
+
+caching:
+  generic:
+    task: Cache@2
+    inputs:
+      key: '"$(cacheKey)" | "$(Agent.OS)"'
+      path: '$(cachePath)'
+      restoreKeys: |
+        "$(cacheKey)" | "$(Agent.OS)"
+    displayName: 'Cache dependencies'
+
+  npm:
+    task: Cache@2
+    inputs:
+      key: 'npm | "$(Agent.OS)" | package-lock.json'
+      path: '$(npm_config_cache)'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+    displayName: 'Cache npm packages'
+
+  nuget:
+    task: Cache@2
+    inputs:
+      key: 'nuget | "$(Agent.OS)" | **/packages.lock.json'
+      path: '$(NUGET_PACKAGES)'
+      restoreKeys: |
+        nuget | "$(Agent.OS)"
+    displayName: 'Cache NuGet packages'
+
+  pip:
+    task: Cache@2
+    inputs:
+      key: 'pip | "$(Agent.OS)" | requirements.txt'
+      path: '$(PIP_CACHE_DIR)'
+      restoreKeys: |
+        pip | "$(Agent.OS)"
+    displayName: 'Cache pip packages'
+
+docker:
+  build:
+    task: Docker@2
+    inputs:
+      command: 'build'
+      repository: '$(imageRepository)'
+      dockerfile: '**/Dockerfile'
+      tags: |
+        $(Build.BuildId)
+        latest
+    displayName: 'Build Docker Image'
+
+  push:
+    task: Docker@2
+    inputs:
+      command: 'push'
+      repository: '$(imageRepository)'
+      containerRegistry: 'ACR-ServiceConnection'
+      tags: |
+        $(Build.BuildId)
+        latest
+    displayName: 'Push Docker Image'
+
+  login:
+    task: Docker@2
+    inputs:
+      command: 'login'
+      containerRegistry: 'ACR-ServiceConnection'
+    displayName: 'Login to Container Registry'
+
+testing:
+  publish_results:
+    task: PublishTestResults@2
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: '**/junit*.xml'
+      failTaskOnFailedTests: true
+    displayName: 'Publish Test Results'
+
+  publish_coverage:
+    task: PublishCodeCoverageResults@2
+    inputs:
+      summaryFileLocation: '$(coverageFile)'
+    displayName: 'Publish Code Coverage'
+
+artifacts:
+  publish:
+    task: PublishBuildArtifacts@1
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'drop'
+      publishLocation: 'Container'
+    displayName: 'Publish Artifact'
+
+  download:
+    task: DownloadBuildArtifacts@1
+    inputs:
+      buildType: 'current'
+      downloadType: 'single'
+      artifactName: 'drop'
+      downloadPath: '$(System.ArtifactsDirectory)'
+    displayName: 'Download Artifact'
+
+  archive:
+    task: ArchiveFiles@2
+    inputs:
+      rootFolderOrFile: '$(buildOutput)'
+      includeRootFolder: false
+      archiveType: 'zip'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+    displayName: 'Archive Files'
+
+azure_services:
+  key_vault:
+    task: AzureKeyVault@2
+    inputs:
+      azureSubscription: 'Azure-ServiceConnection'
+      KeyVaultName: '$(keyVaultName)'
+      SecretsFilter: '*'
+      RunAsPreJob: true
+    displayName: 'Get secrets from Key Vault'
+
+  web_app:
+    task: AzureWebApp@1
+    inputs:
+      azureSubscription: 'Azure-ServiceConnection'
+      appType: 'webApp'
+      appName: '$(webAppName)'
+      package: '$(Pipeline.Workspace)/drop/**/*.zip'
+    displayName: 'Deploy to Azure Web App'
+
+  container_app:
+    task: AzureWebAppContainer@1
+    inputs:
+      azureSubscription: 'Azure-ServiceConnection'
+      appName: '$(containerAppName)'
+      containers: '$(imageRepository):$(Build.BuildId)'
+    displayName: 'Deploy to Container App'
+
+  function_app:
+    task: AzureFunctionApp@2
+    inputs:
+      azureSubscription: 'Azure-ServiceConnection'
+      appType: 'functionApp'
+      appName: '$(functionAppName)'
+      package: '$(Pipeline.Workspace)/drop/**/*.zip'
+    displayName: 'Deploy to Azure Function'
+
+  kubernetes:
+    task: KubernetesManifest@1
+    inputs:
+      action: 'deploy'
+      connectionType: 'azureResourceManager'
+      azureSubscriptionConnection: 'Azure-ServiceConnection'
+      azureResourceGroup: '$(resourceGroup)'
+      kubernetesCluster: '$(aksCluster)'
+      namespace: '$(namespace)'
+      manifests: '**/k8s/*.yaml'
+      containers: '$(imageRepository):$(Build.BuildId)'
+    displayName: 'Deploy to AKS'
+
+# Variables syntax
+variables:
+  build_id: '$(Build.BuildId)'
+  build_number: '$(Build.BuildNumber)'
+  branch: '$(Build.SourceBranchName)'
+  repository: '$(Build.Repository.Name)'
+  commit: '$(Build.SourceVersion)'
+  commit_short: '$(Build.SourceVersion)'
+  agent_os: '$(Agent.OS)'
+  workspace: '$(Pipeline.Workspace)'
+  sources: '$(Build.SourcesDirectory)'
+  staging: '$(Build.ArtifactStagingDirectory)'
+  definition_name: '$(Build.DefinitionName)'
+  reason: '$(Build.Reason)'
