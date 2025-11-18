@@ -27,8 +27,21 @@ vi.mock('azure-devops-node-api', () => {
     getItem: vi.fn(),
   };
 
+  const mockWorkItemTrackingApi = {
+    getWorkItem: vi.fn(),
+    createWorkItem: vi.fn(),
+    updateWorkItem: vi.fn(),
+  };
+
+  const mockPolicyApi = {
+    getPolicyEvaluations: vi.fn(),
+    getPolicyConfiguration: vi.fn(),
+  };
+
   const mockConnection = {
     getGitApi: vi.fn().mockResolvedValue(mockGitApi),
+    getWorkItemTrackingApi: vi.fn().mockResolvedValue(mockWorkItemTrackingApi),
+    getPolicyApi: vi.fn().mockResolvedValue(mockPolicyApi),
   };
 
   return {
@@ -74,12 +87,14 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockConnection = new azdev.WebApi();
       const mockGitApi = await mockConnection.getGitApi();
 
-      // Mock de repositorio para validación
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({
-        id: 'repo-123',
-        name: 'test-repo',
-        project: { id: 'proj-123', name: 'TestProject' },
-      } as any);
+      // Mock de repositorios para validación de conexión
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([
+        {
+          id: 'repo-123',
+          name: 'test-repo',
+          project: { id: 'proj-123', name: 'TestProject' },
+        } as any,
+      ]);
 
       // When: Conectar al servicio
       const connection = await client.connect();
@@ -89,7 +104,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
       expect(connection.organizationUrl).toBe('https://dev.azure.com/testorg');
       expect(connection.project).toBe('TestProject');
       expect(connection.repositoryId).toBe('repo-123');
-      expect(connection.connected).toBe(true);
+      expect(connection.isConnected).toBe(true);
     });
 
     it('debe cachear la conexión tras primer connect exitoso', async () => {
@@ -98,10 +113,12 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockConnection = new azdev.WebApi();
       const mockGitApi = await mockConnection.getGitApi();
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({
-        id: 'repo-123',
-        name: 'test-repo',
-      } as any);
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([
+        {
+          id: 'repo-123',
+          name: 'test-repo',
+        } as any,
+      ]);
 
       await client.connect();
 
@@ -109,7 +126,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const connection2 = await client.connect();
 
       // Then: Debe usar conexión cacheada (no llamar a API nuevamente)
-      expect(connection2.connected).toBe(true);
+      expect(connection2.isConnected).toBe(true);
     });
   });
 
@@ -120,7 +137,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockConnection = new azdev.WebApi();
       const mockGitApi = await mockConnection.getGitApi();
 
-      vi.mocked(mockGitApi.getRepository).mockRejectedValue(
+      vi.mocked(mockGitApi.getRepositories).mockRejectedValue(
         new Error('Authentication failed: Invalid PAT')
       );
 
@@ -136,7 +153,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockConnection = new azdev.WebApi();
       const mockGitApi = await mockConnection.getGitApi();
 
-      vi.mocked(mockGitApi.getRepository).mockRejectedValue(
+      vi.mocked(mockGitApi.getRepositories).mockRejectedValue(
         new Error('Insufficient permissions')
       );
 
@@ -164,6 +181,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
         },
       };
 
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([mockRepo as any]);
       vi.mocked(mockGitApi.getRepository).mockResolvedValue(mockRepo as any);
 
       await client.connect();
@@ -201,7 +219,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
         },
       ];
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({ id: 'repo-123' } as any);
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([{ id: 'repo-123', name: 'test-repo' } as any]);
       vi.mocked(mockGitApi.getPullRequests).mockResolvedValue(mockPRs as any);
 
       await client.connect();
@@ -221,7 +239,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockConnection = new azdev.WebApi();
       const mockGitApi = await mockConnection.getGitApi();
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({ id: 'repo-123' } as any);
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([{ id: 'repo-123', name: 'test-repo' } as any]);
       vi.mocked(mockGitApi.getPullRequests).mockResolvedValue([]);
 
       await client.connect();
@@ -254,7 +272,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
         },
       };
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({ id: 'repo-123' } as any);
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([{ id: 'repo-123', name: 'test-repo' } as any]);
       vi.mocked(mockGitApi.getPullRequest).mockResolvedValue(mockPR as any);
 
       await client.connect();
@@ -277,16 +295,20 @@ describe('AzureDevOpsClient - Fase 1', () => {
 
       const mockPR = { pullRequestId: 125, title: 'Test' };
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({ id: 'repo-123' } as any);
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([{ id: 'repo-123', name: 'test-repo' } as any]);
       vi.mocked(mockGitApi.getPullRequest).mockResolvedValue(mockPR as any);
 
       await client.connect();
+
+      // Limpiar contadores de llamadas tras connect
+      vi.mocked(mockGitApi.getPullRequest).mockClear();
+
       await client.getPullRequest(125);
 
-      // When: Obtener mismo PR nuevamente
+      // When: Obtener mismo PR nuevamente con useCache=true
       const pr2 = await client.getPullRequest(125, true);
 
-      // Then: Debe usar cache (getPullRequest llamado solo 1 vez)
+      // Then: Debe usar cache (getPullRequest llamado solo 1 vez para el primer getPullRequest)
       expect(pr2.pullRequestId).toBe(125);
       expect(vi.mocked(mockGitApi.getPullRequest)).toHaveBeenCalledTimes(1);
     });
@@ -313,7 +335,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
         ],
       };
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({ id: 'repo-123' } as any);
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([{ id: 'repo-123', name: 'test-repo' } as any]);
       vi.mocked(mockGitApi.getPullRequestIterations).mockResolvedValue(mockIterations as any);
       vi.mocked(mockGitApi.getPullRequestIterationChanges).mockResolvedValue(mockChanges as any);
 
@@ -345,7 +367,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
         content: 'trigger:\n  - main\n\nsteps:\n  - task: Build',
       };
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({ id: 'repo-123' } as any);
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([{ id: 'repo-123', name: 'test-repo' } as any]);
       vi.mocked(mockGitApi.getPullRequest).mockResolvedValue(mockPR as any);
       vi.mocked(mockGitApi.getItem).mockResolvedValue(mockItem as any);
 
@@ -368,15 +390,15 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockGitApi = await mockConnection.getGitApi();
 
       const rateLimitError = new Error('429 Rate limit exceeded');
-      const mockRepo = { id: 'repo-123', name: 'test-repo' };
+      const mockRepos = [{ id: 'repo-123', name: 'test-repo' }];
 
       let callCount = 0;
-      vi.mocked(mockGitApi.getRepository).mockImplementation(async () => {
+      vi.mocked(mockGitApi.getRepositories).mockImplementation(async () => {
         callCount++;
         if (callCount === 1) {
           throw rateLimitError;
         }
-        return mockRepo as any;
+        return mockRepos as any;
       });
 
       await client.connect();
@@ -406,16 +428,26 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockConnection = new azdev.WebApi();
       const mockGitApi = await mockConnection.getGitApi();
 
-      let callCount = 0;
+      let connectCallCount = 0;
+      let listCallCount = 0;
       const timestamps: number[] = [];
 
-      vi.mocked(mockGitApi.getRepository).mockImplementation(async () => {
-        timestamps.push(Date.now());
-        callCount++;
-        if (callCount <= 2) {
-          throw new Error('Temporary failure');
+      // Mock para connect() - debe pasar en el primer intento
+      vi.mocked(mockGitApi.getRepositories).mockImplementation(async () => {
+        connectCallCount++;
+        // connect() debe pasar para que luego podamos probar listRepositories()
+        if (connectCallCount <= 1) {
+          return [{ id: 'repo-123', name: 'test-repo' }] as any;
         }
-        return { id: 'repo-123' } as any;
+
+        // Para listRepositories() - debe fallar 2 veces, pasar en la 3ra
+        timestamps.push(Date.now());
+        listCallCount++;
+        if (listCallCount <= 2) {
+          // Usar un error de red que sea retryable
+          throw new Error('ECONNRESET: Connection reset by peer');
+        }
+        return [{ id: 'repo-123', name: 'test-repo' }] as any;
       });
 
       await clientWithRetry.connect();
@@ -424,7 +456,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
       await clientWithRetry.listRepositories();
 
       // Then: Debe haber esperado con backoff exponencial
-      expect(callCount).toBe(3);
+      expect(listCallCount).toBe(3);
       expect(timestamps.length).toBe(3);
 
       // Verificar que el delay aumentó exponencialmente
@@ -452,7 +484,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockGitApi = await mockConnection.getGitApi();
 
       // Mock que siempre falla
-      vi.mocked(mockGitApi.getRepository).mockRejectedValue(
+      vi.mocked(mockGitApi.getRepositories).mockRejectedValue(
         new Error('Persistent failure')
       );
 
@@ -467,7 +499,7 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockConnection = new azdev.WebApi();
       const mockGitApi = await mockConnection.getGitApi();
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({ id: 'repo-123' } as any);
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([{ id: 'repo-123', name: 'test-repo' } as any]);
       vi.mocked(mockGitApi.getPullRequest).mockResolvedValue(null as any);
 
       await client.connect();
@@ -484,10 +516,13 @@ describe('AzureDevOpsClient - Fase 1', () => {
       const mockConnection = new azdev.WebApi();
       const mockGitApi = await mockConnection.getGitApi();
 
-      vi.mocked(mockGitApi.getRepository).mockResolvedValue({
+      const mockRepo = {
         id: 'repo-123',
         name: 'test-repo'
-      } as any);
+      };
+
+      vi.mocked(mockGitApi.getRepositories).mockResolvedValue([mockRepo as any]);
+      vi.mocked(mockGitApi.getRepository).mockResolvedValue(mockRepo as any);
 
       await client.connect();
 

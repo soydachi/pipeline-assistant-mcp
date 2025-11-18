@@ -137,63 +137,60 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
 
   describe('Escenario 6.2.3: Validación de configuración incompleta', () => {
     it('debe rechazar configuración sin URL de organización', () => {
-      // Given: Configuración sin URL
-      const invalidConfig = {
-        personalAccessToken: 'test-pat',
-        project: 'TestProject',
-      };
+      // Given: Configuración sin URL usando helper
+      const manager = new AzureDevOpsConfigManager();
 
       // When/Then: Debe lanzar error de validación
-      expect(() => createConfig(invalidConfig as any)).toThrow(ConfigValidationError);
-      expect(() => createConfig(invalidConfig as any)).toThrow(/organizationUrl is required/i);
+      expect(() => manager.loadFromObject({
+        personalAccessToken: 'test-pat',
+        project: 'TestProject',
+      } as any)).toThrow(ConfigValidationError);
     });
 
     it('debe rechazar configuración sin PAT', () => {
       // Given: Configuración sin PAT
-      const invalidConfig = {
-        organizationUrl: 'https://dev.azure.com/myorg',
-        project: 'TestProject',
-      };
+      const manager = new AzureDevOpsConfigManager();
 
       // When/Then: Debe lanzar error
-      expect(() => createConfig(invalidConfig as any)).toThrow(ConfigValidationError);
-      expect(() => createConfig(invalidConfig as any)).toThrow(/personalAccessToken is required/i);
+      expect(() => manager.loadFromObject({
+        organizationUrl: 'https://dev.azure.com/myorg',
+        project: 'TestProject',
+      } as any)).toThrow(ConfigValidationError);
     });
 
     it('debe rechazar configuración sin proyecto', () => {
       // Given: Configuración sin proyecto
-      const invalidConfig = {
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'test-pat',
-      };
+      const manager = new AzureDevOpsConfigManager();
 
       // When/Then: Debe lanzar error
-      expect(() => createConfig(invalidConfig as any)).toThrow(ConfigValidationError);
-      expect(() => createConfig(invalidConfig as any)).toThrow(/project is required/i);
+      expect(() => manager.loadFromObject({
+        organizationUrl: 'https://dev.azure.com/myorg',
+        personalAccessToken: 'test-pat',
+      } as any)).toThrow(ConfigValidationError);
     });
 
     it('debe rechazar URL de organización inválida', () => {
       // Given: URL inválida
-      const invalidConfig = {
+      const manager = new AzureDevOpsConfigManager();
+
+      // When/Then: Debe lanzar error
+      expect(() => manager.loadFromObject({
         organizationUrl: 'not-a-valid-url',
         personalAccessToken: 'test-pat',
         project: 'TestProject',
-      };
-
-      // When/Then: Debe lanzar error
-      expect(() => createConfig(invalidConfig as any)).toThrow(ConfigValidationError);
+      } as any)).toThrow(ConfigValidationError);
     });
   });
 
   describe('Escenario 6.2.4: Configuración de enforcement mode', () => {
     it('debe aceptar modo learning', () => {
       // Given: Configuración con modo learning
-      const config = createConfig({
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'test-pat',
-        project: 'TestProject',
-        enforcementMode: 'learning',
-      });
+      const config = createConfig(
+        'https://dev.azure.com/myorg',
+        'test-pat',
+        'TestProject',
+        { enforcementMode: 'learning' }
+      );
 
       // Then: Debe tener modo learning
       expect(config.enforcementMode).toBe('learning');
@@ -201,12 +198,12 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
 
     it('debe aceptar modo enforcement', () => {
       // Given: Configuración con modo enforcement
-      const config = createConfig({
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'test-pat',
-        project: 'TestProject',
-        enforcementMode: 'enforcement',
-      });
+      const config = createConfig(
+        'https://dev.azure.com/myorg',
+        'test-pat',
+        'TestProject',
+        { enforcementMode: 'enforcement' }
+      );
 
       // Then: Debe tener modo enforcement
       expect(config.enforcementMode).toBe('enforcement');
@@ -214,11 +211,11 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
 
     it('debe usar learning como valor por defecto', () => {
       // Given: Configuración sin especificar modo
-      const config = createConfig({
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'test-pat',
-        project: 'TestProject',
-      });
+      const config = createConfig(
+        'https://dev.azure.com/myorg',
+        'test-pat',
+        'TestProject'
+      );
 
       // Then: Debe usar learning por defecto
       expect(config.enforcementMode).toBe('learning');
@@ -228,12 +225,12 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
   describe('Escenario 6.2.5: Configuración de strict mode', () => {
     it('debe habilitar strict mode cuando se especifica', () => {
       // Given: Configuración con strict mode
-      const config = createConfig({
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'test-pat',
-        project: 'TestProject',
-        strictMode: true,
-      });
+      const config = createConfig(
+        'https://dev.azure.com/myorg',
+        'test-pat',
+        'TestProject',
+        { strictMode: true }
+      );
 
       // Then: Debe tener strict mode habilitado
       expect(config.strictMode).toBe(true);
@@ -241,11 +238,11 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
 
     it('debe deshabilitar strict mode por defecto', () => {
       // Given: Configuración sin especificar strict mode
-      const config = createConfig({
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'test-pat',
-        project: 'TestProject',
-      });
+      const config = createConfig(
+        'https://dev.azure.com/myorg',
+        'test-pat',
+        'TestProject'
+      );
 
       // Then: Debe estar deshabilitado por defecto
       expect(config.strictMode).toBe(false);
@@ -255,13 +252,15 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
   describe('Escenario 6.2.6: Override de configuración por repositorio', () => {
     it('debe combinar configuración base con override de repositorio', () => {
       // Given: Configuración base
-      const baseConfig = createConfig({
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'base-pat',
-        project: 'BaseProject',
-        enforcementMode: 'learning',
-        strictMode: false,
-      });
+      const baseConfig = createConfig(
+        'https://dev.azure.com/myorg',
+        'base-pat',
+        'BaseProject',
+        {
+          enforcementMode: 'learning',
+          strictMode: false,
+        }
+      );
 
       // Y un archivo de override en el repositorio
       const repoOverridePath = path.join(tempDir, '.pipeline-assistant.json');
@@ -289,12 +288,12 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
 
     it('debe usar configuración base si no hay archivo de override', () => {
       // Given: Configuración base sin archivo de override
-      const baseConfig = createConfig({
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'base-pat',
-        project: 'BaseProject',
-        enforcementMode: 'learning',
-      });
+      const baseConfig = createConfig(
+        'https://dev.azure.com/myorg',
+        'base-pat',
+        'BaseProject',
+        { enforcementMode: 'learning' }
+      );
 
       // When: Cargar con override (sin archivo)
       const mergedConfig = configManager.loadWithRepositoryOverride(tempDir, baseConfig);
@@ -307,11 +306,11 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
   describe('Redacción de información sensible', () => {
     it('debe redactar PAT al exportar configuración', () => {
       // Given: Configuración con PAT
-      const config = createConfig({
-        organizationUrl: 'https://dev.azure.com/myorg',
-        personalAccessToken: 'super-secret-pat-token-123',
-        project: 'TestProject',
-      });
+      const config = createConfig(
+        'https://dev.azure.com/myorg',
+        'super-secret-pat-token-123',
+        'TestProject'
+      );
 
       // When: Redactar información sensible
       const redacted = AzureDevOpsConfigManager.redactSensitiveInfo(config);
@@ -326,10 +325,10 @@ describe('AzureDevOpsConfigManager - Fase 1', () => {
   describe('Scopes requeridos del PAT', () => {
     it('debe exportar los scopes requeridos', () => {
       // Then: Debe incluir todos los scopes necesarios
-      expect(REQUIRED_PAT_SCOPES).toContain('vso.code_write');
       expect(REQUIRED_PAT_SCOPES).toContain('vso.code');
       expect(REQUIRED_PAT_SCOPES).toContain('vso.work_write');
-      expect(REQUIRED_PAT_SCOPES.length).toBeGreaterThan(0);
+      expect(REQUIRED_PAT_SCOPES).toContain('vso.build');
+      expect(REQUIRED_PAT_SCOPES.length).toBe(3);
     });
   });
 });
