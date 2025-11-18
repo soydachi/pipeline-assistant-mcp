@@ -118,22 +118,22 @@ export class MultiPlatformGenerator {
 
     // 2. Security Stage (if enforcing policies)
     if (enforceAllPolicies) {
-      stages.push(this.buildSecurityStage(adapter, projectType, usesDocker));
+      stages.push(this.buildSecurityStage(adapter, projectType));
     }
 
     // 3. Build Stage
-    stages.push(this.buildBuildStage(adapter, projectType));
+    stages.push(this.buildBuildStage(adapter, projectType, services, environment));
 
     // 4. Test Stage
-    stages.push(this.buildTestStage(adapter, projectType));
+    stages.push(this.buildTestStage(adapter, projectType, services));
 
     // 5. Docker Build Stage (if using Docker)
     if (usesDocker) {
-      stages.push(this.buildDockerStage(adapter, projectType));
+      stages.push(this.buildDockerStage(adapter));
     }
 
     // 6. Deploy Stage
-    stages.push(this.buildDeployStage(adapter, environment, usesDocker));
+    stages.push(this.buildDeployStage(adapter, environment, usesDocker, services));
 
     pipeline.stages = stages;
 
@@ -168,6 +168,36 @@ export class MultiPlatformGenerator {
       case 'python':
         variables.push({ name: 'pythonVersion', value: '3.11' });
         break;
+    }
+
+    // Service-specific variables
+    if (services.includes('redis')) {
+      variables.push({ name: 'REDIS_HOST', value: `$(${environment}-redis-host)` });
+      variables.push({ name: 'REDIS_PORT', value: '6380' });
+      variables.push({ name: 'REDIS_SSL', value: 'true' });
+    }
+
+    if (services.includes('azuresql')) {
+      variables.push({ name: 'SQL_SERVER', value: `$(${environment}-sql-server)` });
+      variables.push({ name: 'SQL_DATABASE', value: `$(${environment}-sql-database)` });
+    }
+
+    if (services.includes('cosmosdb')) {
+      variables.push({ name: 'COSMOS_ENDPOINT', value: `$(${environment}-cosmos-endpoint)` });
+      variables.push({ name: 'COSMOS_DATABASE', value: `$(${environment}-cosmos-database)` });
+    }
+
+    if (services.includes('servicebus')) {
+      variables.push({ name: 'SERVICEBUS_NAMESPACE', value: `$(${environment}-servicebus-namespace)` });
+    }
+
+    if (services.includes('storage')) {
+      variables.push({ name: 'STORAGE_ACCOUNT', value: `$(${environment}-storage-account)` });
+    }
+
+    // Add Key Vault reference if any secrets are needed
+    if (services.length > 0 || environment === 'prod') {
+      variables.push({ name: 'keyVaultName', value: `kv-${environment}-001` });
     }
 
     return variables;
@@ -226,7 +256,7 @@ export class MultiPlatformGenerator {
     };
   }
 
-  private buildSecurityStage(adapter: PlatformAdapter, projectType: string, usesDocker: boolean): PlatformStage {
+  private buildSecurityStage(adapter: PlatformAdapter, projectType: string): PlatformStage {
     const jobs: PlatformJob[] = [];
 
     // Secret Scanning Job
@@ -291,8 +321,13 @@ export class MultiPlatformGenerator {
     };
   }
 
-  private buildBuildStage(adapter: PlatformAdapter, projectType: string): PlatformStage {
+  private buildBuildStage(adapter: PlatformAdapter, projectType: string, services: string[], environment: string): PlatformStage {
     const steps: PlatformStep[] = [];
+
+    // Add Key Vault step if services are configured or in production
+    if (services.length > 0 || environment === 'prod') {
+      steps.push(adapter.getKeyVaultStep(`kv-${environment}-001`));
+    }
 
     switch (projectType) {
       case 'dotnet':
@@ -346,7 +381,7 @@ export class MultiPlatformGenerator {
     };
   }
 
-  private buildTestStage(adapter: PlatformAdapter, projectType: string): PlatformStage {
+  private buildTestStage(adapter: PlatformAdapter, projectType: string, services: string[]): PlatformStage {
     const steps: PlatformStep[] = [];
 
     switch (projectType) {
@@ -387,6 +422,15 @@ export class MultiPlatformGenerator {
         break;
     }
 
+    // Build service containers for integration tests
+    const serviceContainers: Record<string, any> = {};
+    if (services.includes('redis')) {
+      serviceContainers['redis'] = {
+        image: 'redis:7-alpine',
+        ports: ['6379:6379'],
+      };
+    }
+
     return {
       id: 'Test',
       displayName: 'Testing',
@@ -396,12 +440,13 @@ export class MultiPlatformGenerator {
           id: 'UnitTests',
           displayName: 'Unit Tests',
           steps,
+          ...(Object.keys(serviceContainers).length > 0 && { services: serviceContainers }),
         },
       ],
     };
   }
 
-  private buildDockerStage(adapter: PlatformAdapter, projectType: string): PlatformStage {
+  private buildDockerStage(adapter: PlatformAdapter): PlatformStage {
     const steps: PlatformStep[] = [];
 
     // Build Docker image
@@ -447,8 +492,51 @@ export class MultiPlatformGenerator {
     };
   }
 
-  private buildDeployStage(adapter: PlatformAdapter, environment: string, usesDocker: boolean): PlatformStage {
+  private buildDeployStage(adapter: PlatformAdapter, environment: string, usesDocker: boolean, services: string[]): PlatformStage {
     const dependsOn = usesDocker ? ['Docker'] : ['Test'];
+    const steps: PlatformStep[] = [];
+
+    // Add health checks for configured services
+    if (services.length > 0) {
+      const healthCheckCommands: string[] = [];
+
+      if (services.includes('redis')) {
+        healthCheckCommands.push('echo "Checking Redis connectivity..."');
+        healthCheckCommands.push('redis-cli -h $(REDIS_HOST) -p $(REDIS_PORT) --tls ping || echo "Redis check skipped (CLI not available)"');
+      }
+
+      if (services.includes('azuresql')) {
+        healthCheckCommands.push('echo "Checking Azure SQL connectivity..."');
+        healthCheckCommands.push('sqlcmd -S $(SQL_SERVER) -d $(SQL_DATABASE) -Q "SELECT 1" || echo "SQL check skipped (sqlcmd not available)"');
+      }
+
+      if (services.includes('cosmosdb')) {
+        healthCheckCommands.push('echo "Checking CosmosDB endpoint..."');
+        healthCheckCommands.push('curl -s --fail $(COSMOS_ENDPOINT) || echo "CosmosDB check skipped"');
+      }
+
+      if (healthCheckCommands.length > 0) {
+        steps.push({
+          script: healthCheckCommands.join('\n'),
+          displayName: 'Service Health Checks',
+          continueOnError: true,
+        });
+      }
+    }
+
+    // Main deploy step
+    steps.push({
+      script: `echo "Deploying to ${environment}..."`,
+      displayName: 'Deploy Application',
+    });
+
+    // Add production-specific steps
+    if (environment === 'prod') {
+      steps.push({
+        script: 'echo "Running smoke tests..."',
+        displayName: 'Smoke Tests',
+      });
+    }
 
     return {
       id: `Deploy${environment.charAt(0).toUpperCase() + environment.slice(1)}`,
@@ -461,12 +549,7 @@ export class MultiPlatformGenerator {
         {
           id: 'Deploy',
           displayName: `Deploy to ${environment} Environment`,
-          steps: [
-            {
-              script: `echo "Deploying to ${environment}..."`,
-              displayName: 'Deploy Application',
-            },
-          ],
+          steps,
         },
       ],
     };

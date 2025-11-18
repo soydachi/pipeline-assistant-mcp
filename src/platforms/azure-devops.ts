@@ -355,4 +355,17 @@ export class AzureDevOpsPlatform implements PlatformAdapter {
       },
     };
   }
+
+  getKeyVaultStep(vaultName: string): PlatformTask {
+    return {
+      id: 'AzureKeyVault@2',
+      displayName: 'Fetch secrets from Key Vault',
+      inputs: {
+        azureSubscription: 'Azure-ServiceConnection',
+        KeyVaultName: vaultName,
+        SecretsFilter: '*',
+        RunAsPreJob: 'true',
+      },
+    };
+  }
 }

@@ -427,4 +427,18 @@ export class GitHubActionsPlatform implements PlatformAdapter {
       },
     };
   }
+
+  getKeyVaultStep(vaultName: string): PlatformTask {
+    return {
+      id: 'Azure/get-keyvault-secrets@v1',
+      displayName: 'Fetch secrets from Key Vault',
+      inputs: {
+        keyvault: vaultName,
+        secrets: '*',
+      },
+      env: {
+        AZURE_CREDENTIALS: '${{ secrets.AZURE_CREDENTIALS }}',
+      },
+    };
+  }
 }

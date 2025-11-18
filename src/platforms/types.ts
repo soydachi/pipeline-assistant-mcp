@@ -171,6 +171,9 @@ export interface PlatformAdapter {
 
   /** Get code coverage publish task */
   getPublishCodeCoverageTask(format: string, summaryFile: string): PlatformStep;
+
+  /** Get Key Vault secrets step */
+  getKeyVaultStep(vaultName: string): PlatformStep;
 }
 
 export interface DockerBuildOptions {
