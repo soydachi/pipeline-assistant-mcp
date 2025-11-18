@@ -418,7 +418,7 @@ class PipelineAssistantServer {
     
     // Footer con enlace a documentación
     response += '\n---\n';
-    response += '*Para más información, consulte la [wiki de estándares](wiki/standards/pipeline-standards.md)*\n';
+    response += '*Para más información, consulte la [wiki de estándares](wiki/standards/README.md)*\n';
     
     return response;
   }

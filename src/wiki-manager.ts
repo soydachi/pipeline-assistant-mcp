@@ -1411,8 +1411,9 @@ stages:
   }
 
   private async loadMarkdownStandards(): Promise<void> {
-    const standardsFile = path.join(this.wikiPath, 'pipeline-standards.md');
-    
+    // v2.0: Load from README.md as the main entry point
+    const standardsFile = path.join(this.wikiPath, 'README.md');
+
     if (fs.existsSync(standardsFile)) {
       const content = await fs.promises.readFile(standardsFile, 'utf-8');
       const rules = await this.parseMarkdownToRules(content);

@@ -46,6 +46,7 @@ export interface TechnologyTemplate {
   name: string;
   description: string;
   technology: string;
+  platform?: string;
   features: string[];
   template: string;
   metadata?: {
@@ -54,6 +55,7 @@ export interface TechnologyTemplate {
     helmChart?: boolean;
     healthChecks?: boolean;
     monitoring?: boolean;
+    securityScans?: number;
   };
 }
 

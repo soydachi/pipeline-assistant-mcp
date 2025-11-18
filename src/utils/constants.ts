@@ -45,12 +45,32 @@ export const FILE_PATTERNS = {
   PIPELINE_DIRS: ['.github/workflows/', 'azure-pipelines', 'pipeline'],
 } as const;
 
-// Wiki paths (relative to project root)
+// Wiki paths (relative to project root) - v2.0 structure
 export const WIKI_PATHS = {
   STANDARDS: './wiki/standards',
-  STANDARDS_FILE: 'pipeline-standards.md',
-  POLICIES_FILE: 'security-policies.yaml',
-  TEMPLATES_DIR: 'templates',
+  // Core configuration
+  CORE_DIR: 'core',
+  STAGES_FILE: 'core/stages.yaml',
+  NAMING_FILE: 'core/naming-conventions.yaml',
+  ENVIRONMENTS_FILE: 'core/environments.yaml',
+  // Security policies
+  SECURITY_DIR: 'security',
+  POLICIES_FILE: 'security/policies.yaml',
+  SLA_FILE: 'security/sla.yaml',
+  COMPLIANCE_FILE: 'security/compliance-mapping.yaml',
+  // Quality standards
+  QUALITY_DIR: 'quality',
+  TESTING_FILE: 'quality/testing.yaml',
+  COVERAGE_FILE: 'quality/coverage.yaml',
+  GATES_FILE: 'quality/gates.yaml',
+  // Platform templates
+  PLATFORMS_DIR: 'platforms',
+  AZURE_TEMPLATES_DIR: 'platforms/azure/templates',
+  GITHUB_TEMPLATES_DIR: 'platforms/github/templates',
+  COMMON_DIR: 'platforms/common',
+  // Metadata files
+  VERSION_FILE: 'version.yaml',
+  README_FILE: 'README.md',
   HISTORY_FILE: '.policy-history.json',
   METRICS_FILE: '.adoption-metrics.json',
 } as const;

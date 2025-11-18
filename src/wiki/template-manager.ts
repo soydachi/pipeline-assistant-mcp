@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'yaml';
 import { createLogger } from '../utils/logger.js';
+import { WIKI_PATHS } from '../utils/constants.js';
 import type { TechnologyTemplate } from './types.js';
 
 const logger = createLogger('TemplateManager');
@@ -21,43 +22,96 @@ export class TemplateManager {
   }
 
   async loadTemplates(): Promise<void> {
-    const templatesDir = path.join(this.wikiPath, 'templates');
+    // Load templates from v2.0 structure: platforms/azure/templates and platforms/github/templates
+    const platformDirs = [
+      { platform: 'azure', dir: path.join(this.wikiPath, WIKI_PATHS.AZURE_TEMPLATES_DIR) },
+      { platform: 'github', dir: path.join(this.wikiPath, WIKI_PATHS.GITHUB_TEMPLATES_DIR) },
+    ];
 
-    if (!fs.existsSync(templatesDir)) {
-      fs.mkdirSync(templatesDir, { recursive: true });
-      await this.createDefaultTemplates();
-    }
+    for (const { platform, dir } of platformDirs) {
+      if (!fs.existsSync(dir)) {
+        logger.warn(`Templates directory not found: ${dir}`);
+        continue;
+      }
 
-    const files = fs.readdirSync(templatesDir);
+      const files = fs.readdirSync(dir);
 
-    for (const file of files) {
-      if (file.endsWith('.yml') || file.endsWith('.yaml')) {
-        const content = fs.readFileSync(path.join(templatesDir, file), 'utf-8');
-        const templateId = path.basename(file, path.extname(file));
+      for (const file of files) {
+        if (file.endsWith('.yml') || file.endsWith('.yaml')) {
+          const content = fs.readFileSync(path.join(dir, file), 'utf-8');
+          const technology = path.basename(file, path.extname(file));
+          const templateId = `${platform}-${technology}`;
 
-        const metadata = this.extractTemplateMetadata(content);
+          const metadata = this.extractTemplateMetadata(content);
 
-        const template: TechnologyTemplate = {
-          id: templateId,
-          name: metadata.name || templateId,
-          description: metadata.description || '',
-          technology: metadata.technology || this.inferTechnology(templateId),
-          features: metadata.features || [],
-          template: content,
-          metadata: {
-            dockerized: content.includes('Docker'),
-            multiStage: content.includes('stages:'),
-            helmChart: content.includes('HelmDeploy'),
-            healthChecks: content.includes('health') || content.includes('liveness'),
-            monitoring: content.includes('monitoring') || content.includes('metrics'),
-          },
-        };
+          const template: TechnologyTemplate = {
+            id: templateId,
+            name: metadata.name || `${platform.charAt(0).toUpperCase() + platform.slice(1)} ${technology}`,
+            description: metadata.description || `${platform} pipeline for ${technology}`,
+            technology: technology,
+            platform: platform,
+            features: metadata.features || this.extractFeatures(content),
+            template: content,
+            metadata: {
+              dockerized: content.includes('Docker') || content.includes('docker'),
+              multiStage: content.includes('stages:') || content.includes('jobs:'),
+              helmChart: content.includes('HelmDeploy') || content.includes('helm'),
+              healthChecks: content.includes('health') || content.includes('liveness'),
+              monitoring: content.includes('monitoring') || content.includes('metrics'),
+              securityScans: this.countSecurityScans(content),
+            },
+          };
 
-        this.templates.set(templateId, template);
+          this.templates.set(templateId, template);
+        }
       }
     }
 
     logger.info('Technology templates loaded', { count: this.templates.size });
+  }
+
+  private extractFeatures(content: string): string[] {
+    const features: string[] = [];
+
+    if (content.includes('SEC-001') || content.includes('TruffleHog') || content.includes('trufflehog')) {
+      features.push('Secret Scanning');
+    }
+    if (content.includes('SEC-002') || content.includes('SonarCloud') || content.includes('SonarQube')) {
+      features.push('SAST');
+    }
+    if (content.includes('SEC-003') || content.includes('Snyk') || content.includes('npm audit')) {
+      features.push('Dependency Scanning');
+    }
+    if (content.includes('SEC-004') || content.includes('Trivy') || content.includes('trivy')) {
+      features.push('Container Scanning');
+    }
+    if (content.includes('SEC-007') || content.includes('ZAP') || content.includes('zap')) {
+      features.push('DAST');
+    }
+    if (content.includes('SEC-010') || content.includes('sbom') || content.includes('SBOM')) {
+      features.push('SBOM Generation');
+    }
+    if (content.includes('Docker') || content.includes('docker')) {
+      features.push('Docker Build');
+    }
+    if (content.includes('stages:')) {
+      features.push('Multi-stage Pipeline');
+    }
+
+    return features;
+  }
+
+  private countSecurityScans(content: string): number {
+    let count = 0;
+    const secPatterns = ['SEC-001', 'SEC-002', 'SEC-003', 'SEC-004', 'SEC-005', 'SEC-006', 'SEC-007', 'SEC-008', 'SEC-010'];
+
+    for (const pattern of secPatterns) {
+      if (content.includes(pattern)) {
+        count++;
+      }
+    }
+
+    return count;
   }
 
   private extractTemplateMetadata(content: string): any {
@@ -92,6 +146,14 @@ export class TemplateManager {
 
   getTemplatesByTechnology(technology: string): TechnologyTemplate[] {
     return Array.from(this.templates.values()).filter((t) => t.technology === technology);
+  }
+
+  getTemplatesByPlatform(platform: string): TechnologyTemplate[] {
+    return Array.from(this.templates.values()).filter((t) => t.platform === platform);
+  }
+
+  getTemplateByPlatformAndTechnology(platform: string, technology: string): TechnologyTemplate | undefined {
+    return this.templates.get(`${platform}-${technology}`);
   }
 
   getAllTemplates(): TechnologyTemplate[] {
