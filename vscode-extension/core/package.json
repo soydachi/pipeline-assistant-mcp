@@ -1,0 +1,91 @@
+{
+  "name": "@soydachi/pipeline-assistant-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for intelligent CI/CD pipeline assistance with generative AI",
+  "main": "dist/src/server.js",
+  "type": "module",
+  "bin": {
+    "pipeline-assistant": "./dist/cli/pipeline-assistant.js",
+    "pipeline-wiki": "./dist/cli/wiki-cli.js",
+    "pipeline-pr": "./dist/cli/pr-bot-cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "dev": "tsc --watch",
+    "start": "node dist/src/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "prepare": "npm run build"
+  },
+  "mcp": {
+    "server": {
+      "command": "node",
+      "args": [
+        "dist/src/server.js"
+      ],
+      "transport": "stdio"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soydachi/pipeline-assistant-mcp.git"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "pipeline",
+    "cicd",
+    "devsecops",
+    "azure-devops",
+    "github-actions",
+    "ai",
+    "generative-ai",
+    "automation"
+  ],
+  "author": {
+    "name": "Dachi Gogotchuri",
+    "email": "dachi.gogotchuri@gmail.com",
+    "url": "https://soydachi.com"
+  },
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/soydachi/pipeline-assistant-mcp/issues"
+  },
+  "homepage": "https://github.com/soydachi/pipeline-assistant-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "@octokit/rest": "^20.0.0",
+    "azure-devops-node-api": "^15.1.1",
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.3",
+    "commander": "^11.1.0",
+    "glob": "^12.0.0",
+    "pino": "^10.1.0",
+    "pino-pretty": "^13.1.2",
+    "yaml": "^2.3.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "@vitest/coverage-v8": "^4.0.9",
+    "@vitest/ui": "^4.0.9",
+    "eslint": "^8.55.0",
+    "prettier": "^3.1.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.9"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  }
+}

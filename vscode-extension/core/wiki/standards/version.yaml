@@ -1,0 +1,62 @@
+# Pipeline Standards Version Control
+# Semantic Versioning: MAJOR.MINOR.PATCH
+
+version: '2.0.0'
+
+metadata:
+  name: Corporate Pipeline Standards
+  description: Enterprise CI/CD standards for security, quality, and compliance
+  maintainer: Platform Engineering Team
+  contact: platform-engineering@company.com
+
+release:
+  date: '2025-11-18'
+  status: stable  # draft | stable | deprecated
+
+changelog:
+  - version: '2.0.0'
+    date: '2025-11-18'
+    type: major
+    changes:
+      - Complete restructuring of standards organization
+      - Added SLA definitions for vulnerability remediation
+      - Added compliance mapping to SOC2, ISO 27001, PCI-DSS
+      - New policies: DAST, License Compliance, API Security, SBOM
+      - Quality gates per environment
+      - Metrics and coverage standards
+      - Naming conventions standardized
+    breaking_changes:
+      - Directory structure changed
+      - Old pipeline-standards.md deprecated
+      - Old security-policies.yaml deprecated
+
+  - version: '1.0.0'
+    date: '2025-01-01'
+    type: major
+    changes:
+      - Initial release
+      - Basic security policies
+      - Azure DevOps and GitHub Actions support
+
+compatibility:
+  minimum_agent_version:
+    azure: '3.x'
+    github: 'ubuntu-latest'
+  supported_platforms:
+    - azure-devops
+    - github-actions
+  deprecated_items:
+    - path: pipeline-standards.md
+      replacement: core/stages.yaml + security/policies.yaml
+      removal_date: '2026-02-01'
+    - path: security-policies.yaml
+      replacement: security/policies.yaml
+      removal_date: '2026-02-01'
+
+review_cycle:
+  frequency: quarterly
+  next_review: '2026-02-01'
+  reviewers:
+    - Platform Engineering Team
+    - Security Team
+    - Architecture Team

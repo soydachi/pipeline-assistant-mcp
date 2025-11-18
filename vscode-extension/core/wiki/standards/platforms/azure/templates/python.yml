@@ -1,0 +1,452 @@
+# Azure DevOps Pipeline for Python Application
+# Version: 2.0.0 - Follows corporate security and quality standards
+# Standards reference: wiki/standards/README.md
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - release/*
+  paths:
+    exclude:
+      - README.md
+      - docs/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: pythonVersion
+    value: '3.11'
+  - name: dockerRegistry
+    value: 'myacr.azurecr.io'
+  - name: imageRepository
+    value: 'myapp-python'
+  - group: common-variables
+  - group: database-secrets
+
+stages:
+# =============================================================================
+# STAGE 1: VALIDATE
+# =============================================================================
+- stage: Validate
+  displayName: 'Validate'
+  jobs:
+  - job: Lint
+    displayName: 'Linting & Format Check'
+    steps:
+    - task: UsePythonVersion@0
+      displayName: 'Use Python $(pythonVersion)'
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: |
+        python -m pip install --upgrade pip
+        pip install black flake8 mypy isort
+      displayName: 'Install Linting Tools'
+
+    - script: black --check .
+      displayName: 'Check Code Formatting (Black)'
+
+    - script: isort --check-only .
+      displayName: 'Check Import Sorting (isort)'
+
+    - script: flake8 .
+      displayName: 'Run Flake8'
+
+    - script: mypy .
+      displayName: 'Type Checking (MyPy)'
+
+# =============================================================================
+# STAGE 2: SECURITY
+# =============================================================================
+- stage: Security
+  displayName: 'Security'
+  dependsOn: Validate
+  jobs:
+  - job: SecretScan
+    displayName: 'SEC-001: Secret Detection'
+    steps:
+    - script: |
+        docker run --rm -v "$(Build.SourcesDirectory):/src" \
+          trufflesecurity/trufflehog:latest \
+          filesystem /src \
+          --fail \
+          --no-update
+      displayName: 'TruffleHog Secret Scan'
+
+  - job: SAST
+    displayName: 'SEC-002: Static Analysis'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: |
+        pip install bandit
+        bandit -r . -f json -o bandit-report.json || true
+      displayName: 'Bandit SAST Scan'
+
+    - task: SonarQubePrepare@6
+      displayName: 'Prepare SonarQube Analysis'
+      inputs:
+        SonarQube: 'SonarQube-Connection'
+        scannerMode: 'CLI'
+        configMode: 'manual'
+        cliProjectKey: '$(Build.Repository.Name)'
+        extraProperties: |
+          sonar.sources=.
+          sonar.python.coverage.reportPaths=coverage.xml
+          sonar.python.xunit.reportPath=test-results.xml
+          sonar.python.bandit.reportPaths=bandit-report.json
+
+    - task: SonarQubeAnalyze@6
+      displayName: 'Run SonarQube Analysis'
+
+    - task: SonarQubePublish@6
+      displayName: 'Publish SonarQube Results'
+      inputs:
+        pollingTimeoutSec: '300'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Security Reports'
+      inputs:
+        PathtoPublish: 'bandit-report.json'
+        ArtifactName: 'security-reports'
+      condition: always()
+
+  - job: DependencyScan
+    displayName: 'SEC-003: Dependency Scanning'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: |
+        pip install safety pip-audit
+      displayName: 'Install Security Tools'
+
+    - script: safety check -r requirements.txt --full-report
+      displayName: 'Safety Check (Dependencies)'
+
+    - script: pip-audit -r requirements.txt
+      displayName: 'Pip Audit'
+
+    - task: SnykSecurityScan@1
+      displayName: 'Snyk Security Scan'
+      inputs:
+        serviceConnectionEndpoint: 'Snyk-Connection'
+        testType: 'app'
+        severityThreshold: 'high'
+        failOnIssues: true
+
+  - job: LicenseCompliance
+    displayName: 'SEC-008: License Compliance'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: |
+        pip install pip-licenses
+        pip install -r requirements.txt
+        pip-licenses --format=json --output-file=licenses.json
+        pip-licenses --fail-on "GPL;AGPL"
+      displayName: 'License Compliance Check'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish License Report'
+      inputs:
+        PathtoPublish: 'licenses.json'
+        ArtifactName: 'licenses'
+      condition: always()
+
+# =============================================================================
+# STAGE 3: BUILD
+# =============================================================================
+- stage: Build
+  displayName: 'Build'
+  dependsOn: Security
+  jobs:
+  - job: BuildPython
+    displayName: 'Build Python Application'
+    steps:
+    - task: UsePythonVersion@0
+      displayName: 'Use Python $(pythonVersion)'
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - task: Cache@2
+      displayName: 'Cache pip packages'
+      inputs:
+        key: 'pip | "$(Agent.OS)" | requirements.txt'
+        path: $(PIP_CACHE_DIR)
+        restoreKeys: |
+          pip | "$(Agent.OS)"
+
+    - script: |
+        python -m pip install --upgrade pip
+        pip install poetry
+      displayName: 'Install Poetry'
+
+    - script: poetry install
+      displayName: 'Install Dependencies'
+
+    - script: poetry build
+      displayName: 'Build Package'
+
+    # SEC-010: Generate SBOM
+    - script: |
+        docker run --rm -v $(Build.SourcesDirectory):/src \
+          anchore/syft:latest /src \
+          -o spdx-json=/src/sbom.spdx.json \
+          -o cyclonedx-json=/src/sbom.cyclonedx.json
+      displayName: 'Generate SBOM'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Artifacts to Staging'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)'
+        Contents: |
+          dist/**
+          sbom.*.json
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - publish: '$(Build.ArtifactStagingDirectory)'
+      artifact: 'drop'
+      displayName: 'Publish Artifacts'
+
+# =============================================================================
+# STAGE 4: TEST
+# =============================================================================
+- stage: Test
+  displayName: 'Test'
+  dependsOn: Build
+  jobs:
+  - job: UnitTests
+    displayName: 'Unit Tests'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: |
+        pip install poetry
+        poetry install
+      displayName: 'Install Dependencies'
+
+    - script: |
+        poetry run pytest tests/unit \
+          --cov=./ \
+          --cov-report=xml \
+          --cov-report=html \
+          --junitxml=junit.xml \
+          -v
+      displayName: 'Run Unit Tests with Coverage'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/junit.xml'
+        failTaskOnFailedTests: true
+
+    - task: PublishCodeCoverageResults@2
+      displayName: 'Publish Code Coverage'
+      inputs:
+        summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+
+  - job: IntegrationTests
+    displayName: 'Integration Tests'
+    dependsOn: UnitTests
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: |
+        docker-compose -f docker-compose.test.yml up -d
+      displayName: 'Start Test Dependencies'
+
+    - script: |
+        pip install poetry
+        poetry install
+      displayName: 'Install Dependencies'
+
+    - script: |
+        poetry run pytest tests/integration \
+          --junitxml=integration-junit.xml \
+          -v
+      displayName: 'Run Integration Tests'
+
+    - script: |
+        docker-compose -f docker-compose.test.yml down
+      displayName: 'Stop Test Dependencies'
+      condition: always()
+
+# =============================================================================
+# STAGE 5: SCAN (Container)
+# =============================================================================
+- stage: Scan
+  displayName: 'Scan'
+  dependsOn: Build
+  jobs:
+  - job: DockerBuild
+    displayName: 'Build & Scan Docker Image'
+    steps:
+    # SEC-005: Dockerfile Linting
+    - script: |
+        docker run --rm -i hadolint/hadolint < Dockerfile
+      displayName: 'Hadolint Dockerfile Check'
+
+    - task: Docker@2
+      displayName: 'Build Docker Image'
+      inputs:
+        command: 'build'
+        repository: $(imageRepository)
+        dockerfile: '**/Dockerfile'
+        tags: |
+          $(Build.BuildId)
+          latest
+
+    # SEC-004: Container Scanning
+    - script: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:latest image \
+          --exit-code 1 \
+          --severity CRITICAL,HIGH \
+          $(imageRepository):$(Build.BuildId)
+      displayName: 'Trivy Container Scan'
+
+    - task: Docker@2
+      displayName: 'Push to Registry'
+      inputs:
+        command: 'push'
+        repository: $(imageRepository)
+        containerRegistry: 'ACR-ServiceConnection'
+        tags: |
+          $(Build.BuildId)
+          latest
+
+# =============================================================================
+# STAGE 6: DEPLOY
+# =============================================================================
+- stage: DeployDev
+  displayName: 'Deploy to Development'
+  dependsOn:
+    - Test
+    - Scan
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployToDev
+    displayName: 'Deploy to Dev Environment'
+    environment: 'development'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appName: 'myapp-python-dev'
+              containers: '$(dockerRegistry)/$(imageRepository):$(Build.BuildId)'
+
+          - script: |
+              curl -f https://myapp-python-dev.azurewebsites.net/health || exit 1
+            displayName: 'Smoke Test'
+
+- stage: DeployStaging
+  displayName: 'Deploy to Staging'
+  dependsOn:
+    - Test
+    - Scan
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/'))
+  jobs:
+  - deployment: DeployToStaging
+    displayName: 'Deploy to Staging Environment'
+    environment: 'staging'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appName: 'myapp-python-staging'
+              containers: '$(dockerRegistry)/$(imageRepository):$(Build.BuildId)'
+
+        postRouteTraffic:
+          steps:
+          - script: |
+              curl -f https://myapp-python-staging.azurewebsites.net/health || exit 1
+            displayName: 'Health Check'
+
+          # SEC-007: DAST Scan on Staging
+          - script: |
+              mkdir -p $(Build.SourcesDirectory)/reports
+              docker run --rm -v $(Build.SourcesDirectory)/reports:/zap/wrk:rw \
+                -t owasp/zap2docker-stable zap-baseline.py \
+                -t https://myapp-python-staging.azurewebsites.net \
+                -r zap-report.html \
+                -J zap-report.json \
+                -I
+            displayName: 'OWASP ZAP Baseline Scan'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish ZAP Report'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/reports'
+              ArtifactName: 'zap-reports'
+            condition: always()
+
+- stage: DeployProd
+  displayName: 'Deploy to Production'
+  dependsOn:
+    - Test
+    - Scan
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProd
+    displayName: 'Deploy to Production Environment'
+    environment: 'production'
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - task: ManualValidation@0
+            displayName: 'Approval Required'
+            inputs:
+              notifyUsers: 'devops-team@company.com'
+              instructions: |
+                Please review and approve the production deployment.
+
+                Checklist:
+                - [ ] All tests passed
+                - [ ] Security scans clean
+                - [ ] SBOM generated
+                - [ ] Rollback plan ready
+
+        deploy:
+          steps:
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appName: 'myapp-python-prod'
+              containers: '$(dockerRegistry)/$(imageRepository):$(Build.BuildId)'
+
+        postRouteTraffic:
+          steps:
+          - script: |
+              curl -f https://myapp-python-prod.azurewebsites.net/health || exit 1
+            displayName: 'Health Check'
+
+        on:
+          failure:
+            steps:
+            - script: |
+                echo "Deployment failed. Initiating rollback..."
+              displayName: 'Rollback Notification'

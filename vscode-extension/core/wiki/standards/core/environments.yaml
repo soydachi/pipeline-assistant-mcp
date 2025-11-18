@@ -1,0 +1,198 @@
+# Environment Definitions and Controls
+# Defines deployment targets and their requirements
+
+version: '2.0.0'
+
+environments:
+  development:
+    id: dev
+    aliases: [development, develop, dev]
+    description: Development and feature testing
+    purpose: Rapid iteration and feature validation
+
+    deployment:
+      auto_deploy: true
+      branches: ['develop', 'feature/*']
+      approval_required: false
+
+    quality_gates:
+      tests_required: true
+      minimum_coverage: 60
+      security_scan: true
+      block_on_critical: true
+
+    infrastructure:
+      scale: minimal
+      high_availability: false
+      backup: false
+      monitoring: basic
+
+    data:
+      type: synthetic
+      pii_allowed: false
+
+    retention:
+      artifacts: 7 days
+      logs: 14 days
+
+  staging:
+    id: staging
+    aliases: [staging, stage, uat, preprod]
+    description: Pre-production validation
+    purpose: Final validation before production release
+
+    deployment:
+      auto_deploy: true
+      branches: ['release/*', 'main']
+      approval_required: false
+      smoke_tests: true
+
+    quality_gates:
+      tests_required: true
+      minimum_coverage: 80
+      security_scan: true
+      block_on_critical: true
+      block_on_high: true
+      performance_tests: true
+
+    infrastructure:
+      scale: production-like
+      high_availability: false
+      backup: false
+      monitoring: standard
+
+    data:
+      type: anonymized_production
+      pii_allowed: false
+
+    retention:
+      artifacts: 30 days
+      logs: 30 days
+
+  production:
+    id: prod
+    aliases: [production, prod, live]
+    description: Live production environment
+    purpose: Serve end users
+
+    deployment:
+      auto_deploy: false
+      branches: ['main', 'hotfix/*']
+      approval_required: true
+      min_approvers: 2
+      approver_groups:
+        - tech-leads
+        - senior-engineers
+      smoke_tests: true
+      rollback_ready: true
+      deployment_windows:
+        preferred: 'Tuesday-Thursday 10:00-16:00 UTC'
+        blocked: 'Friday 14:00 - Monday 08:00 UTC'
+
+    quality_gates:
+      tests_required: true
+      minimum_coverage: 80
+      security_scan: true
+      block_on_critical: true
+      block_on_high: true
+      performance_tests: true
+      all_previous_gates_passed: true
+
+    infrastructure:
+      scale: full
+      high_availability: true
+      backup: true
+      disaster_recovery: true
+      monitoring: comprehensive
+
+    data:
+      type: production
+      pii_allowed: true
+      encryption_required: true
+
+    retention:
+      artifacts: 90 days
+      logs: 365 days
+
+# Promotion flow
+promotion:
+  path: development -> staging -> production
+
+  requirements:
+    staging:
+      - All development tests passed
+      - Security scan clean
+      - Code review approved
+
+    production:
+      - All staging tests passed
+      - Performance benchmarks met
+      - Security team sign-off (for critical changes)
+      - Change request approved
+
+# Environment-specific variables
+variable_groups:
+  azure:
+    pattern: '{project}-{env}-variables'
+    examples:
+      - my-api-dev-variables
+      - my-api-staging-variables
+      - my-api-prod-variables
+
+  github:
+    environments:
+      - development
+      - staging
+      - production
+    note: Use GitHub Environments for environment-specific secrets
+
+# Branch protection rules
+branch_protection:
+  main:
+    required_reviews: 2
+    dismiss_stale_reviews: true
+    require_code_owner_reviews: true
+    require_status_checks:
+      - build
+      - test
+      - security-scan
+    restrict_pushes: true
+
+  develop:
+    required_reviews: 1
+    require_status_checks:
+      - build
+      - test
+
+# Rollback procedures
+rollback:
+  automatic_triggers:
+    - health_check_failure
+    - error_rate_spike
+    - latency_threshold_exceeded
+
+  manual_triggers:
+    - critical_bug_discovered
+    - security_incident
+
+  procedures:
+    azure_app_service:
+      method: deployment_slots
+      steps:
+        - Swap to previous slot
+        - Verify health checks
+        - Notify team
+
+    kubernetes:
+      method: kubectl_rollback
+      steps:
+        - kubectl rollout undo
+        - Verify pod health
+        - Notify team
+
+    container_apps:
+      method: revision_switch
+      steps:
+        - Switch traffic to previous revision
+        - Verify health
+        - Notify team

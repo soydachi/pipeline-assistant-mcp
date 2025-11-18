@@ -1,0 +1,404 @@
+# Security Policies - Consolidated Security Standards
+# All security requirements and controls in one place
+
+version: '2.0.0'
+
+# Policy enforcement configuration
+enforcement:
+  mode: progressive  # learning | progressive | strict
+  grace_period_days: 30
+
+  modes:
+    learning:
+      description: Report violations without blocking
+      block: []
+      warn: [CRITICAL, HIGH, MEDIUM, LOW]
+
+    progressive:
+      description: Block critical, warn on high/medium
+      block: [CRITICAL]
+      warn: [HIGH, MEDIUM]
+      info: [LOW]
+
+    strict:
+      description: Block critical and high severity
+      block: [CRITICAL, HIGH]
+      warn: [MEDIUM]
+      info: [LOW]
+
+# Security policies
+policies:
+  # === MANDATORY POLICIES ===
+
+  - id: SEC-001
+    name: Secret Scanning
+    description: Detect hardcoded secrets, API keys, and credentials in source code
+    category: secrets
+    severity: CRITICAL
+    level: mandatory
+    stage: security
+
+    rationale: |
+      Hardcoded secrets in repositories are a leading cause of data breaches.
+      Secrets can be extracted from git history even after deletion.
+
+    tools:
+      primary: TruffleHog
+      implementation: docker-script
+      reference: platforms/common/security-tools.yaml#secret_scanning
+
+    requirements:
+      - Scan entire repository including history
+      - Fail pipeline on detection
+      - No exceptions allowed
+
+    remediation:
+      steps:
+        - Rotate compromised credentials immediately
+        - Remove from git history using BFG or git filter-branch
+        - Move secrets to secure vault (Key Vault, Secrets Manager)
+      sla: 24 hours
+
+  - id: SEC-002
+    name: Static Application Security Testing (SAST)
+    description: Analyze source code for security vulnerabilities and code quality issues
+    category: sast
+    severity: CRITICAL
+    level: mandatory
+    stage: security
+
+    rationale: |
+      Static analysis identifies vulnerabilities early in the development cycle
+      when they are cheapest to fix.
+
+    tools:
+      primary: SonarQube
+      task: SonarQubePrepare@6
+      reference: platforms/common/security-tools.yaml#sast
+
+    requirements:
+      - Quality gate must pass
+      - No new critical/blocker issues
+      - Security hotspots must be reviewed
+
+    thresholds:
+      bugs: 0 (blocker/critical)
+      vulnerabilities: 0 (blocker/critical)
+      code_smells: A rating
+      coverage: 80%
+      duplications: < 3%
+
+  - id: SEC-003
+    name: Software Composition Analysis (SCA)
+    description: Scan dependencies for known vulnerabilities
+    category: dependency
+    severity: HIGH
+    level: mandatory
+    stage: security
+
+    rationale: |
+      Third-party dependencies contain 80%+ of application code.
+      Known vulnerabilities in dependencies are easily exploitable.
+
+    tools:
+      primary: Snyk
+      task: SnykSecurityScan@1
+      reference: platforms/common/security-tools.yaml#dependency_scanning
+
+    requirements:
+      - Scan all direct and transitive dependencies
+      - Fail on high/critical vulnerabilities
+      - Generate SBOM
+
+    thresholds:
+      critical: 0
+      high: 0
+      medium: warn
+      low: info
+
+  - id: SEC-004
+    name: Container Image Scanning
+    description: Scan container images for OS and library vulnerabilities
+    category: container
+    severity: HIGH
+    level: mandatory
+    stage: scan
+    condition: usesDocker
+
+    rationale: |
+      Container images often contain outdated packages with known vulnerabilities.
+      Base images must be regularly updated.
+
+    tools:
+      primary: Trivy
+      implementation: docker-script
+      reference: platforms/common/security-tools.yaml#container_scanning
+
+    requirements:
+      - Scan after image build
+      - Fail on critical/high vulnerabilities
+      - Use minimal base images
+
+    thresholds:
+      critical: 0
+      high: 0
+      medium: warn
+
+  - id: SEC-005
+    name: Dockerfile Best Practices
+    description: Lint Dockerfiles for security and efficiency
+    category: container
+    severity: MEDIUM
+    level: mandatory
+    stage: validate
+    condition: usesDocker
+
+    tools:
+      primary: Hadolint
+      reference: platforms/common/security-tools.yaml#dockerfile_linting
+
+    requirements:
+      - No root user in production images
+      - Pin base image versions
+      - Use multi-stage builds
+      - No secrets in build args
+
+  - id: SEC-006
+    name: Infrastructure as Code Scanning
+    description: Scan IaC templates for misconfigurations
+    category: iac
+    severity: HIGH
+    level: mandatory
+    stage: scan
+    condition: hasInfrastructure
+
+    tools:
+      primary: Checkov
+      alternative: Microsoft Security DevOps
+      reference: platforms/common/security-tools.yaml#infrastructure_scanning
+
+    requirements:
+      - Scan all IaC files (Terraform, ARM, Bicep, CloudFormation)
+      - Fail on critical misconfigurations
+      - Check for exposed resources
+
+  # === NEW POLICIES (v2.0) ===
+
+  - id: SEC-007
+    name: Dynamic Application Security Testing (DAST)
+    description: Test running application for vulnerabilities
+    category: dast
+    severity: HIGH
+    level: mandatory
+    stage: deploy
+    condition: is_web_app AND environment IN [staging, production]
+
+    rationale: |
+      DAST finds vulnerabilities that only appear at runtime,
+      such as authentication issues and server misconfigurations.
+
+    tools:
+      primary: OWASP ZAP
+      implementation: docker-script
+
+    azure:
+      script: |
+        docker run --rm -t owasp/zap2docker-stable zap-baseline.py \
+          -t $(applicationUrl) \
+          -r zap-report.html \
+          -I
+      displayName: 'OWASP ZAP Baseline Scan'
+
+    github:
+      uses: zaproxy/action-baseline@v0.9.0
+      with:
+        target: '${{ env.APPLICATION_URL }}'
+        fail_action: true
+
+    requirements:
+      - Run against staging before production deploy
+      - Authenticated scan for protected endpoints
+      - API scan for REST/GraphQL endpoints
+
+  - id: SEC-008
+    name: License Compliance
+    description: Ensure all dependencies have approved licenses
+    category: compliance
+    severity: MEDIUM
+    level: mandatory
+    stage: security
+
+    rationale: |
+      Copyleft licenses may require source code disclosure.
+      Some licenses are incompatible with commercial use.
+
+    tools:
+      node:
+        script: npx license-checker --failOn 'GPL;AGPL;SSPL'
+      python:
+        script: pip-licenses --fail-on 'GPL;AGPL'
+      dotnet:
+        script: dotnet-project-licenses -i . --fail-on-forbidden
+
+    approved_licenses:
+      - MIT
+      - Apache-2.0
+      - BSD-2-Clause
+      - BSD-3-Clause
+      - ISC
+      - MPL-2.0
+
+    prohibited_licenses:
+      - GPL-2.0
+      - GPL-3.0
+      - AGPL-3.0
+      - SSPL
+      - Unlicense (unless reviewed)
+
+  - id: SEC-009
+    name: API Security Testing
+    description: Test APIs for OWASP API Top 10 vulnerabilities
+    category: api
+    severity: HIGH
+    level: recommended
+    stage: test
+    condition: is_api_project
+
+    tools:
+      primary: OWASP ZAP API Scan
+      alternative: Postman Security Tests
+
+    azure:
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory):/zap/wrk:rw \
+          owasp/zap2docker-stable zap-api-scan.py \
+          -t $(openApiSpec) \
+          -f openapi \
+          -r api-scan-report.html
+      displayName: 'OWASP ZAP API Scan'
+
+    requirements:
+      - Provide OpenAPI/Swagger specification
+      - Test authentication/authorization
+      - Check rate limiting
+
+  - id: SEC-010
+    name: Software Bill of Materials (SBOM)
+    description: Generate SBOM for all releases
+    category: compliance
+    severity: MEDIUM
+    level: mandatory
+    stage: build
+
+    rationale: |
+      SBOMs are required for supply chain security and compliance.
+      Enable rapid response to newly discovered vulnerabilities.
+
+    tools:
+      primary: Syft
+      formats: [spdx-json, cyclonedx-json]
+
+    azure:
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory):/src \
+          anchore/syft:latest /src \
+          -o spdx-json=/src/sbom.spdx.json \
+          -o cyclonedx-json=/src/sbom.cyclonedx.json
+      displayName: 'Generate SBOM'
+
+    github:
+      uses: anchore/sbom-action@v0
+      with:
+        format: spdx-json
+        output-file: sbom.spdx.json
+
+    requirements:
+      - Generate for every release
+      - Store with release artifacts
+      - Update on dependency changes
+
+# Compliance controls
+compliance:
+  - id: COM-001
+    name: Branch Protection
+    description: Enforce branch protection rules
+    severity: MEDIUM
+    level: mandatory
+
+    requirements:
+      main:
+        required_reviews: 2
+        require_status_checks: true
+        restrict_pushes: true
+        dismiss_stale_reviews: true
+
+  - id: COM-002
+    name: Production Approval Gates
+    description: Require human approval for production deployments
+    severity: CRITICAL
+    level: mandatory
+
+    requirements:
+      environments: [production, prod]
+      min_approvers: 2
+      approver_groups:
+        - tech-leads
+        - senior-engineers
+      timeout: 72 hours
+
+  - id: COM-003
+    name: Audit Logging
+    description: Maintain audit trail of all pipeline executions
+    severity: MEDIUM
+    level: mandatory
+
+    requirements:
+      - Log all deployments
+      - Record approvals
+      - Track configuration changes
+      - Retain for compliance period
+
+# Exceptions management
+exceptions:
+  process:
+    - Document technical justification
+    - Define expiration date (max 90 days)
+    - Get Security Team approval
+    - Register in this file
+    - Review before expiration
+
+  current:
+    - project: legacy-system
+      policies: [SEC-004, SEC-007]
+      reason: Legacy application not containerized, no web interface
+      approved_by: security-team
+      expires: '2025-12-31'
+
+# Prohibited practices
+prohibited:
+  - id: ANTI-001
+    description: Never disable security scans with continueOnError
+    example: |
+      # BAD
+      - script: security-scan
+        continueOnError: true  # PROHIBITED
+
+  - id: ANTI-002
+    description: Never skip security stage
+    example: |
+      # BAD
+      condition: false  # PROHIBITED on security stage
+
+  - id: ANTI-003
+    description: Never hardcode secrets
+    example: |
+      # BAD
+      password: 'MyS3cr3t!'  # PROHIBITED
+
+  - id: ANTI-004
+    description: Never use latest tag for security tools
+    example: |
+      # BAD
+      uses: snyk/actions/node@latest  # PROHIBITED
+      # GOOD
+      uses: snyk/actions/node@master

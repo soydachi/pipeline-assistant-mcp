@@ -1,0 +1,237 @@
+# Testing Standards - Quality Assurance Requirements
+# Defines testing requirements for all pipelines
+
+version: '2.0.0'
+
+# Testing pyramid
+test_types:
+  unit:
+    name: Unit Tests
+    level: mandatory
+    stage: test
+    description: Test individual components in isolation
+
+    requirements:
+      - Test all public methods/functions
+      - Mock external dependencies
+      - Fast execution (< 1s per test)
+      - No side effects (database, network)
+
+    metrics:
+      coverage: 80%
+      pass_rate: 100%
+
+    frameworks:
+      node:
+        recommended: [jest, vitest]
+        runner: 'npm test'
+      dotnet:
+        recommended: [xunit, nunit]
+        runner: 'dotnet test'
+      python:
+        recommended: [pytest]
+        runner: 'pytest tests/unit'
+      java:
+        recommended: [junit5]
+        runner: 'mvn test'
+      go:
+        recommended: [testing]
+        runner: 'go test ./...'
+
+  integration:
+    name: Integration Tests
+    level: mandatory
+    stage: test
+    description: Test component interactions
+
+    requirements:
+      - Test API contracts
+      - Test database operations
+      - Test external service integrations
+      - Use test containers when possible
+
+    metrics:
+      coverage: 60%
+      pass_rate: 100%
+
+    infrastructure:
+      databases:
+        - Use Docker containers
+        - Reset state between tests
+        - Use separate test database
+
+    frameworks:
+      node:
+        recommended: [supertest, testcontainers]
+      dotnet:
+        recommended: [WebApplicationFactory, testcontainers]
+      python:
+        recommended: [pytest-docker, testcontainers]
+
+  e2e:
+    name: End-to-End Tests
+    level: recommended
+    stage: test
+    description: Test complete user workflows
+
+    requirements:
+      - Test critical user journeys
+      - Run against staging environment
+      - Minimize flaky tests
+
+    metrics:
+      critical_flows_covered: 100%
+      pass_rate: 95%
+
+    frameworks:
+      web:
+        recommended: [playwright, cypress]
+      api:
+        recommended: [newman, postman]
+      mobile:
+        recommended: [appium, detox]
+
+  performance:
+    name: Performance Tests
+    level: recommended
+    stage: performance
+    condition: is_api_project OR is_web_app
+    description: Validate performance under load
+
+    requirements:
+      - Define baseline metrics
+      - Test with realistic data
+      - Run before production deployment
+
+    metrics:
+      response_time_p99: '< 500ms'
+      throughput: 'defined by SLO'
+      error_rate: '< 1%'
+
+    frameworks:
+      recommended: [k6, artillery, jmeter]
+
+    azure:
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory):/scripts \
+          grafana/k6 run /scripts/load-test.js \
+          --out json=/scripts/results.json
+      displayName: 'K6 Load Test'
+
+    github:
+      uses: grafana/k6-action@v0.3.1
+      with:
+        filename: load-test.js
+
+  contract:
+    name: Contract Tests
+    level: recommended
+    stage: test
+    condition: has_api_consumers
+    description: Verify API contracts between services
+
+    requirements:
+      - Consumer-driven contracts
+      - Run on both provider and consumer
+      - Version contracts with API
+
+    frameworks:
+      recommended: [pact]
+
+# Test execution standards
+execution:
+  parallelization:
+    enabled: true
+    strategy: by_test_file
+    max_workers: auto
+
+  isolation:
+    - Each test must be independent
+    - No shared state between tests
+    - Clean up after each test
+
+  naming:
+    pattern: '{method}_{scenario}_{expectedResult}'
+    examples:
+      - createUser_withValidData_returnsCreatedUser
+      - login_withInvalidPassword_returns401
+
+  reporting:
+    formats:
+      - junit
+      - cobertura
+    publish: true
+    fail_on_failure: true
+
+# Test data management
+test_data:
+  principles:
+    - Use factories/builders for test data
+    - Never use production data
+    - Anonymize any realistic data
+    - Version control test fixtures
+
+  synthetic:
+    tools:
+      - faker
+      - bogus
+      - factory_boy
+
+  pii_handling:
+    - Never include real PII in tests
+    - Use clearly fake data (test@example.com)
+    - Document data generation approach
+
+# Flaky test management
+flaky_tests:
+  definition: Test that fails intermittently without code changes
+  threshold: 3 failures in 10 runs
+
+  handling:
+    - Quarantine flaky tests immediately
+    - Create ticket for investigation
+    - Fix within 1 sprint
+    - Delete if not fixable
+
+  prevention:
+    - Avoid sleep/delays
+    - Mock time-dependent behavior
+    - Use deterministic assertions
+    - Ensure proper test isolation
+
+# CI optimization
+optimization:
+  caching:
+    - Cache test dependencies
+    - Cache compiled test code
+    - Use incremental testing when possible
+
+  selective_testing:
+    enabled: true
+    strategies:
+      - Run affected tests on PR
+      - Run full suite on main branch
+      - Run critical path on every commit
+
+  timeouts:
+    unit: 5 minutes
+    integration: 15 minutes
+    e2e: 30 minutes
+    performance: 60 minutes
+
+# Test environment requirements
+environments:
+  local:
+    - Fast feedback
+    - No external dependencies
+    - Mock external services
+
+  ci:
+    - Reproducible
+    - Isolated
+    - Consistent with production config
+
+  staging:
+    - Production-like
+    - Real external services
+    - Anonymized data

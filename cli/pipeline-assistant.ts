@@ -266,11 +266,14 @@ program
   .description('Analyze a pipeline for issues')
   .requiredOption('-f, --file <file>', 'Pipeline file to analyze')
   .option('--strict', 'Enable strict mode (more rules)', false)
+  .option('--json', 'Output results as JSON', false)
   .option('--config <file>', 'Custom configuration file')
   .action(async (options) => {
     try {
-      console.log(chalk.blue('🔍 Analyzing pipeline...'));
-      console.log(chalk.gray(`  File: ${options.file}`));
+      if (!options.json) {
+        console.log(chalk.blue('🔍 Analyzing pipeline...'));
+        console.log(chalk.gray(`  File: ${options.file}`));
+      }
 
       const content = readFileSync(options.file, 'utf-8');
 
@@ -281,13 +284,58 @@ program
       // Load custom config if provided
       if (options.config) {
         const config = JSON.parse(readFileSync(options.config, 'utf-8'));
-        console.log(chalk.gray(`  Config: ${options.config}`));
-        if (config.customRules) {
-          console.log(chalk.gray(`  Custom rules: ${config.customRules.length}`));
+        if (!options.json) {
+          console.log(chalk.gray(`  Config: ${options.config}`));
+          if (config.customRules) {
+            console.log(chalk.gray(`  Custom rules: ${config.customRules.length}`));
+          }
         }
       }
 
       const result = await analyzer.analyze(content, { strictMode: options.strict });
+
+      // JSON output mode
+      if (options.json) {
+        const jsonOutput = {
+          complianceScore: result.score,
+          securityIssues: result.violations.filter((v: any) =>
+            v.message?.toLowerCase().includes('seguridad') ||
+            v.message?.toLowerCase().includes('security') ||
+            v.message?.toLowerCase().includes('secreto') ||
+            v.type?.includes('SEC')
+          ).map((v: any) => ({
+            ruleId: v.ruleId || v.type || 'SEC',
+            severity: v.severity,
+            message: v.message,
+            line: v.line
+          })),
+          policyViolations: result.violations.filter((v: any) =>
+            v.message?.toLowerCase().includes('política') ||
+            v.message?.toLowerCase().includes('policy') ||
+            v.message?.toLowerCase().includes('stage') ||
+            v.type?.includes('POL')
+          ).map((v: any) => ({
+            policyId: v.policyId || v.type || 'POL',
+            severity: v.severity,
+            message: v.message,
+            line: v.line
+          })),
+          bestPracticeViolations: result.violations.filter((v: any) =>
+            !v.message?.toLowerCase().includes('seguridad') &&
+            !v.message?.toLowerCase().includes('política') &&
+            !v.message?.toLowerCase().includes('stage') &&
+            !v.type?.includes('SEC') &&
+            !v.type?.includes('POL')
+          ).map((v: any) => ({
+            severity: v.severity,
+            message: v.message,
+            line: v.line
+          })),
+          recommendations: []
+        };
+        console.log(JSON.stringify(jsonOutput));
+        process.exit(0);
+      }
 
       // Display results
       console.log(chalk.cyan('\n📊 Pipeline Analysis Results'));

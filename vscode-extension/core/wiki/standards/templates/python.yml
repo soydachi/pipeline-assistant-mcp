@@ -1,0 +1,83 @@
+# Template: Python 3.11 Application
+# Technology: python
+# Platform: azure-devops
+# Description: Complete CI/CD pipeline for Python applications with security scanning
+
+metadata:
+  name: Python 3.11 Application
+  technology: python
+  version: '3.11'
+  features:
+    - Flake8 and Black formatting
+    - Security scanning (TruffleHog, Bandit, Safety)
+    - Pytest with coverage
+    - pip audit
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: pipeline-variables
+  - name: pythonVersion
+    value: '3.11'
+
+stages:
+  - stage: Validate
+    displayName: 'Code Validation'
+    jobs:
+      - job: Lint
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+          - script: pip install -r requirements.txt
+          - script: flake8 . && black --check .
+
+  - stage: Security
+    displayName: 'Security Scanning'
+    dependsOn: Validate
+    jobs:
+      - job: SecretScan
+        steps:
+          - script: |
+              docker run --rm -v "$(Build.SourcesDirectory):/src" \
+                trufflesecurity/trufflehog:latest filesystem /src --fail
+      - job: DependencyScan
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+          - script: pip install safety && safety check -r requirements.txt
+
+  - stage: Build
+    displayName: 'Build & Test'
+    dependsOn: Security
+    jobs:
+      - job: Build
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+          - script: pip install -r requirements.txt pytest pytest-cov
+          - script: pytest --cov=. --cov-report=xml --junitxml=test-results.xml
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'test-results.xml'
+          - task: PublishCodeCoverageResults@2
+            inputs:
+              summaryFileLocation: 'coverage.xml'
+
+  - stage: Deploy
+    displayName: 'Deploy'
+    dependsOn: Build
+    jobs:
+      - job: Deploy
+        steps:
+          - script: echo "Deploying..."

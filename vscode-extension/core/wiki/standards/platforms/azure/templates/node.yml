@@ -1,0 +1,421 @@
+# Azure DevOps Pipeline for Node.js Application
+# Version: 2.0.0 - Follows corporate security and quality standards
+# Standards reference: wiki/standards/README.md
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - release/*
+  paths:
+    exclude:
+      - README.md
+      - docs/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: nodeVersion
+    value: '20.x'
+  - name: dockerRegistry
+    value: 'myacr.azurecr.io'
+  - name: imageRepository
+    value: 'myapp-node'
+  - group: common-variables
+  - group: database-secrets
+
+stages:
+# =============================================================================
+# STAGE 1: VALIDATE
+# =============================================================================
+- stage: Validate
+  displayName: 'Validate'
+  jobs:
+  - job: Lint
+    displayName: 'Linting & Format Check'
+    steps:
+    - task: NodeTool@0
+      displayName: 'Install Node.js'
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - script: npm ci
+      displayName: 'Install Dependencies'
+
+    - script: npm run lint
+      displayName: 'Run ESLint'
+
+    - script: npm run format:check
+      displayName: 'Check Formatting'
+
+# =============================================================================
+# STAGE 2: SECURITY
+# =============================================================================
+- stage: Security
+  displayName: 'Security'
+  dependsOn: Validate
+  jobs:
+  - job: SecretScan
+    displayName: 'SEC-001: Secret Detection'
+    steps:
+    - script: |
+        docker run --rm -v "$(Build.SourcesDirectory):/src" \
+          trufflesecurity/trufflehog:latest \
+          filesystem /src \
+          --fail \
+          --no-update
+      displayName: 'TruffleHog Secret Scan'
+
+  - job: SAST
+    displayName: 'SEC-002: Static Analysis'
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - script: npm ci
+      displayName: 'Install Dependencies'
+
+    - task: SonarQubePrepare@6
+      displayName: 'Prepare SonarQube Analysis'
+      inputs:
+        SonarQube: 'SonarQube-Connection'
+        scannerMode: 'CLI'
+        configMode: 'manual'
+        cliProjectKey: '$(Build.Repository.Name)'
+        extraProperties: |
+          sonar.sources=src
+          sonar.javascript.lcov.reportPaths=coverage/lcov.info
+          sonar.typescript.lcov.reportPaths=coverage/lcov.info
+
+    - script: npm test -- --coverage
+      displayName: 'Run Tests for Coverage'
+
+    - task: SonarQubeAnalyze@6
+      displayName: 'Run SonarQube Analysis'
+
+    - task: SonarQubePublish@6
+      displayName: 'Publish SonarQube Results'
+      inputs:
+        pollingTimeoutSec: '300'
+
+  - job: DependencyScan
+    displayName: 'SEC-003: Dependency Scanning'
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - script: npm ci
+      displayName: 'Install Dependencies'
+
+    - script: npm audit --audit-level=high
+      displayName: 'NPM Audit'
+
+    - task: SnykSecurityScan@1
+      displayName: 'Snyk Security Scan'
+      inputs:
+        serviceConnectionEndpoint: 'Snyk-Connection'
+        testType: 'app'
+        severityThreshold: 'high'
+        failOnIssues: true
+
+  - job: LicenseCompliance
+    displayName: 'SEC-008: License Compliance'
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - script: npm ci
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npx license-checker --json --out licenses.json
+        npx license-checker --failOn "GPL;AGPL;SSPL;CC-BY-NC"
+      displayName: 'License Compliance Check'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish License Report'
+      inputs:
+        PathtoPublish: 'licenses.json'
+        ArtifactName: 'licenses'
+      condition: always()
+
+# =============================================================================
+# STAGE 3: BUILD
+# =============================================================================
+- stage: Build
+  displayName: 'Build'
+  dependsOn: Security
+  jobs:
+  - job: BuildNode
+    displayName: 'Build Node.js Application'
+    steps:
+    - task: NodeTool@0
+      displayName: 'Install Node.js'
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - task: Cache@2
+      displayName: 'Cache npm packages'
+      inputs:
+        key: 'npm | "$(Agent.OS)" | package-lock.json'
+        path: $(npm_config_cache)
+        restoreKeys: |
+          npm | "$(Agent.OS)"
+
+    - script: npm ci
+      displayName: 'Install Dependencies'
+
+    - script: npm run build
+      displayName: 'Build Application'
+
+    # SEC-010: Generate SBOM
+    - script: |
+        docker run --rm -v $(Build.SourcesDirectory):/src \
+          anchore/syft:latest /src \
+          -o spdx-json=/src/sbom.spdx.json \
+          -o cyclonedx-json=/src/sbom.cyclonedx.json
+      displayName: 'Generate SBOM'
+
+    - task: ArchiveFiles@2
+      displayName: 'Archive Build Output'
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/dist'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+
+    - task: CopyFiles@2
+      displayName: 'Copy SBOM to Staging'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)'
+        Contents: 'sbom.*.json'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - publish: '$(Build.ArtifactStagingDirectory)'
+      artifact: 'drop'
+      displayName: 'Publish Artifacts'
+
+# =============================================================================
+# STAGE 4: TEST
+# =============================================================================
+- stage: Test
+  displayName: 'Test'
+  dependsOn: Build
+  jobs:
+  - job: UnitTests
+    displayName: 'Unit Tests'
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - script: npm ci
+      displayName: 'Install Dependencies'
+
+    - script: npm test -- --coverage --ci --reporters=default --reporters=jest-junit
+      displayName: 'Run Unit Tests'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/junit.xml'
+        failTaskOnFailedTests: true
+
+    - task: PublishCodeCoverageResults@2
+      displayName: 'Publish Code Coverage'
+      inputs:
+        summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage/cobertura-coverage.xml'
+
+  - job: IntegrationTests
+    displayName: 'Integration Tests'
+    dependsOn: UnitTests
+    steps:
+    - script: |
+        docker-compose -f docker-compose.test.yml up -d
+      displayName: 'Start Test Dependencies'
+
+    - task: NodeTool@0
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - script: npm ci
+      displayName: 'Install Dependencies'
+
+    - script: npm run test:integration
+      displayName: 'Run Integration Tests'
+
+    - script: |
+        docker-compose -f docker-compose.test.yml down
+      displayName: 'Stop Test Dependencies'
+      condition: always()
+
+# =============================================================================
+# STAGE 5: SCAN (Container)
+# =============================================================================
+- stage: Scan
+  displayName: 'Scan'
+  dependsOn: Build
+  jobs:
+  - job: DockerBuild
+    displayName: 'Build & Scan Docker Image'
+    steps:
+    # SEC-005: Dockerfile Linting
+    - script: |
+        docker run --rm -i hadolint/hadolint < Dockerfile
+      displayName: 'Hadolint Dockerfile Check'
+
+    - task: Docker@2
+      displayName: 'Build Docker Image'
+      inputs:
+        command: 'build'
+        repository: $(imageRepository)
+        dockerfile: '**/Dockerfile'
+        tags: |
+          $(Build.BuildId)
+          latest
+
+    # SEC-004: Container Scanning
+    - script: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:latest image \
+          --exit-code 1 \
+          --severity CRITICAL,HIGH \
+          $(imageRepository):$(Build.BuildId)
+      displayName: 'Trivy Container Scan'
+
+    - task: Docker@2
+      displayName: 'Push to Registry'
+      inputs:
+        command: 'push'
+        repository: $(imageRepository)
+        containerRegistry: 'ACR-ServiceConnection'
+        tags: |
+          $(Build.BuildId)
+          latest
+
+# =============================================================================
+# STAGE 6: DEPLOY
+# =============================================================================
+- stage: DeployDev
+  displayName: 'Deploy to Development'
+  dependsOn:
+    - Test
+    - Scan
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployToDev
+    displayName: 'Deploy to Dev Environment'
+    environment: 'development'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appName: 'myapp-node-dev'
+              containers: '$(dockerRegistry)/$(imageRepository):$(Build.BuildId)'
+
+          - script: |
+              curl -f https://myapp-node-dev.azurewebsites.net/health || exit 1
+            displayName: 'Smoke Test'
+
+- stage: DeployStaging
+  displayName: 'Deploy to Staging'
+  dependsOn:
+    - Test
+    - Scan
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/'))
+  jobs:
+  - deployment: DeployToStaging
+    displayName: 'Deploy to Staging Environment'
+    environment: 'staging'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appName: 'myapp-node-staging'
+              containers: '$(dockerRegistry)/$(imageRepository):$(Build.BuildId)'
+
+        postRouteTraffic:
+          steps:
+          - script: |
+              curl -f https://myapp-node-staging.azurewebsites.net/health || exit 1
+            displayName: 'Health Check'
+
+          # SEC-007: DAST Scan on Staging
+          - script: |
+              docker run --rm -v $(Build.SourcesDirectory)/reports:/zap/wrk:rw \
+                -t owasp/zap2docker-stable zap-baseline.py \
+                -t https://myapp-node-staging.azurewebsites.net \
+                -r zap-report.html \
+                -J zap-report.json \
+                -I
+            displayName: 'OWASP ZAP Baseline Scan'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish ZAP Report'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/reports'
+              ArtifactName: 'zap-reports'
+            condition: always()
+
+- stage: DeployProd
+  displayName: 'Deploy to Production'
+  dependsOn:
+    - Test
+    - Scan
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProd
+    displayName: 'Deploy to Production Environment'
+    environment: 'production'
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - task: ManualValidation@0
+            displayName: 'Approval Required'
+            inputs:
+              notifyUsers: 'devops-team@company.com'
+              instructions: |
+                Please review and approve the production deployment.
+
+                Checklist:
+                - [ ] All tests passed
+                - [ ] Security scans clean
+                - [ ] SBOM generated
+                - [ ] Rollback plan ready
+
+        deploy:
+          steps:
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appName: 'myapp-node-prod'
+              containers: '$(dockerRegistry)/$(imageRepository):$(Build.BuildId)'
+
+        postRouteTraffic:
+          steps:
+          - script: |
+              curl -f https://myapp-node-prod.azurewebsites.net/health || exit 1
+            displayName: 'Health Check'
+
+        on:
+          failure:
+            steps:
+            - script: |
+                echo "Deployment failed. Initiating rollback..."
+              displayName: 'Rollback Notification'

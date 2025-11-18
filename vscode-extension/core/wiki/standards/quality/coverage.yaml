@@ -1,0 +1,224 @@
+# Code Coverage Standards
+# Defines coverage requirements and metrics
+
+version: '2.0.0'
+
+# Coverage thresholds
+thresholds:
+  global:
+    lines: 80
+    branches: 75
+    functions: 80
+    statements: 80
+
+  by_environment:
+    development:
+      minimum: 60
+      target: 80
+
+    staging:
+      minimum: 80
+      target: 90
+
+    production:
+      minimum: 80
+      target: 90
+      enforce: true
+
+  by_criticality:
+    critical_paths:
+      description: Authentication, payments, data access
+      minimum: 90
+
+    business_logic:
+      description: Core domain logic
+      minimum: 85
+
+    utilities:
+      description: Helper functions, formatters
+      minimum: 75
+
+    ui_components:
+      description: Presentation layer
+      minimum: 70
+
+# Coverage tools by language
+tools:
+  node:
+    primary: c8
+    alternatives: [nyc, jest --coverage]
+    format: lcov
+    config: |
+      // package.json
+      "c8": {
+        "reporter": ["text", "lcov", "cobertura"],
+        "all": true,
+        "include": ["src/**/*.ts"],
+        "exclude": ["**/*.test.ts", "**/*.spec.ts"]
+      }
+
+    azure:
+      - script: npm test -- --coverage
+        displayName: 'Run tests with coverage'
+      - task: PublishCodeCoverageResults@2
+        inputs:
+          summaryFileLocation: 'coverage/cobertura-coverage.xml'
+
+    github:
+      - run: npm test -- --coverage
+      - uses: codecov/codecov-action@v4
+        with:
+          files: coverage/lcov.info
+
+  dotnet:
+    primary: coverlet
+    format: cobertura
+    config: |
+      dotnet test --collect:"XPlat Code Coverage" \
+        -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+
+    azure:
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: test
+          arguments: '--collect:"XPlat Code Coverage"'
+      - task: PublishCodeCoverageResults@2
+        inputs:
+          summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
+
+    github:
+      - run: dotnet test --collect:"XPlat Code Coverage"
+      - uses: codecov/codecov-action@v4
+        with:
+          files: '**/coverage.cobertura.xml'
+
+  python:
+    primary: pytest-cov
+    format: xml
+    config: |
+      pytest --cov=src --cov-report=xml --cov-report=term-missing
+
+    azure:
+      - script: pytest --cov=src --cov-report=xml --cov-report=cobertura:coverage.xml
+        displayName: 'Run tests with coverage'
+      - task: PublishCodeCoverageResults@2
+        inputs:
+          summaryFileLocation: 'coverage.xml'
+
+    github:
+      - run: pytest --cov=src --cov-report=xml
+      - uses: codecov/codecov-action@v4
+
+  java:
+    primary: jacoco
+    format: xml
+
+    azure:
+      - task: Maven@4
+        inputs:
+          mavenPomFile: pom.xml
+          goals: test jacoco:report
+      - task: PublishCodeCoverageResults@2
+        inputs:
+          summaryFileLocation: 'target/site/jacoco/jacoco.xml'
+
+  go:
+    primary: built-in
+    format: coverprofile
+    config: |
+      go test -coverprofile=coverage.out ./...
+      go tool cover -html=coverage.out -o coverage.html
+
+# Coverage quality
+quality_metrics:
+  meaningful_coverage:
+    description: Coverage that actually validates behavior
+    requirements:
+      - Assertions present in tests
+      - Edge cases covered
+      - Error paths tested
+
+  anti_patterns:
+    - name: coverage_gaming
+      description: Tests that execute code without assertions
+      detection: High coverage but low mutation score
+
+    - name: happy_path_only
+      description: Only testing successful scenarios
+      detection: Low branch coverage
+
+    - name: trivial_tests
+      description: Testing getters/setters without logic
+      recommendation: Exclude from coverage requirements
+
+# Exclusions
+exclusions:
+  standard:
+    - Generated code
+    - Migration files
+    - Configuration files
+    - Test files themselves
+    - Type definitions
+
+  patterns:
+    node: ['**/*.d.ts', '**/migrations/**', '**/__mocks__/**']
+    dotnet: ['**/Migrations/**', '**/obj/**']
+    python: ['**/migrations/**', '**/conftest.py']
+
+  justification_required:
+    - Third-party integrations
+    - Legacy code (with timeline to cover)
+    - Platform-specific code
+
+# Enforcement
+enforcement:
+  pr_checks:
+    - Coverage cannot decrease
+    - New code must meet threshold
+    - Report coverage diff
+
+  blocking:
+    development: false
+    staging: false
+    production: true
+
+  exceptions:
+    process:
+      - Document reason
+      - Set timeline to improve
+      - Get tech lead approval
+
+# Reporting
+reporting:
+  platforms:
+    primary: SonarQube
+    alternative: Codecov
+
+  dashboards:
+    - Overall project coverage trend
+    - Coverage by module/package
+    - New code coverage
+    - Coverage diff per PR
+
+  badges:
+    enabled: true
+    location: README.md
+
+# Coverage improvement
+improvement:
+  strategy:
+    - Start with critical paths
+    - Add tests when fixing bugs
+    - Cover new code immediately
+    - Gradually improve legacy code
+
+  review_checklist:
+    - Are new features covered?
+    - Are bug fixes covered?
+    - Are edge cases tested?
+    - Is error handling tested?
+
+  technical_debt:
+    tracking: true
+    review_frequency: quarterly
+    target: Increase 5% per quarter until target met

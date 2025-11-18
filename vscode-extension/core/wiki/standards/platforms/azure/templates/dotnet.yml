@@ -1,0 +1,427 @@
+# Azure DevOps Pipeline for .NET Application
+# Version: 2.0.0 - Follows corporate security and quality standards
+# Standards reference: wiki/standards/README.md
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - release/*
+  paths:
+    exclude:
+      - README.md
+      - docs/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: buildConfiguration
+    value: 'Release'
+  - name: dotnetVersion
+    value: '8.x'
+  - name: dockerRegistry
+    value: 'myacr.azurecr.io'
+  - name: imageRepository
+    value: 'myapp-dotnet'
+  - group: common-variables
+  - group: security-secrets
+
+stages:
+# =============================================================================
+# STAGE 1: VALIDATE
+# =============================================================================
+- stage: Validate
+  displayName: 'Validate'
+  jobs:
+  - job: Lint
+    displayName: 'Linting & Format Check'
+    steps:
+    - task: UseDotNet@2
+      displayName: 'Install .NET SDK'
+      inputs:
+        packageType: 'sdk'
+        version: $(dotnetVersion)
+
+    - script: dotnet restore
+      displayName: 'Restore Dependencies'
+
+    - script: dotnet format --verify-no-changes
+      displayName: 'Check Formatting'
+
+# =============================================================================
+# STAGE 2: SECURITY
+# =============================================================================
+- stage: Security
+  displayName: 'Security'
+  dependsOn: Validate
+  jobs:
+  - job: SecretScan
+    displayName: 'SEC-001: Secret Detection'
+    steps:
+    - script: |
+        docker run --rm -v "$(Build.SourcesDirectory):/src" \
+          trufflesecurity/trufflehog:latest \
+          filesystem /src \
+          --fail \
+          --no-update
+      displayName: 'TruffleHog Secret Scan'
+
+  - job: SAST
+    displayName: 'SEC-002: Static Analysis'
+    steps:
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: $(dotnetVersion)
+
+    - task: SonarQubePrepare@6
+      displayName: 'Prepare SonarQube Analysis'
+      inputs:
+        SonarQube: 'SonarQube-Connection'
+        scannerMode: 'MSBuild'
+        projectKey: '$(Build.Repository.Name)'
+        extraProperties: |
+          sonar.cs.opencover.reportsPaths=$(Build.SourcesDirectory)/**/coverage.opencover.xml
+          sonar.cs.vstest.reportsPaths=$(Build.SourcesDirectory)/**/*.trx
+
+    - script: dotnet build --configuration $(buildConfiguration)
+      displayName: 'Build for Analysis'
+
+    - task: SonarQubeAnalyze@6
+      displayName: 'Run SonarQube Analysis'
+
+    - task: SonarQubePublish@6
+      displayName: 'Publish SonarQube Results'
+      inputs:
+        pollingTimeoutSec: '300'
+
+  - job: DependencyScan
+    displayName: 'SEC-003: Dependency Scanning'
+    steps:
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: $(dotnetVersion)
+
+    - script: dotnet restore
+      displayName: 'Restore Dependencies'
+
+    - script: dotnet list package --vulnerable --include-transitive
+      displayName: '.NET Vulnerability Check'
+
+    - task: SnykSecurityScan@1
+      displayName: 'Snyk Security Scan'
+      inputs:
+        serviceConnectionEndpoint: 'Snyk-Connection'
+        testType: 'app'
+        severityThreshold: 'high'
+        failOnIssues: true
+
+  - job: LicenseCompliance
+    displayName: 'SEC-008: License Compliance'
+    steps:
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: $(dotnetVersion)
+
+    - script: |
+        dotnet tool install --global dotnet-project-licenses
+        dotnet-project-licenses -i . -o licenses.json --export-license-texts
+        dotnet-project-licenses -i . --fail-on-forbidden \
+          --forbidden GPL-2.0-only GPL-3.0-only AGPL-3.0-only
+      displayName: 'License Compliance Check'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish License Report'
+      inputs:
+        PathtoPublish: 'licenses.json'
+        ArtifactName: 'licenses'
+      condition: always()
+
+# =============================================================================
+# STAGE 3: BUILD
+# =============================================================================
+- stage: Build
+  displayName: 'Build'
+  dependsOn: Security
+  jobs:
+  - job: BuildDotNet
+    displayName: 'Build .NET Application'
+    steps:
+    - task: UseDotNet@2
+      displayName: 'Install .NET SDK'
+      inputs:
+        packageType: 'sdk'
+        version: $(dotnetVersion)
+
+    - task: Cache@2
+      displayName: 'Cache NuGet packages'
+      inputs:
+        key: 'nuget | "$(Agent.OS)" | **/packages.lock.json'
+        path: $(NUGET_PACKAGES)
+        restoreKeys: |
+          nuget | "$(Agent.OS)"
+
+    - script: dotnet restore
+      displayName: 'Restore Dependencies'
+
+    - script: dotnet build --configuration $(buildConfiguration) --no-restore
+      displayName: 'Build Application'
+
+    - script: dotnet publish --configuration $(buildConfiguration) --no-build --output $(Build.ArtifactStagingDirectory)/app
+      displayName: 'Publish Application'
+
+    # SEC-010: Generate SBOM
+    - script: |
+        docker run --rm -v $(Build.SourcesDirectory):/src \
+          anchore/syft:latest /src \
+          -o spdx-json=/src/sbom.spdx.json \
+          -o cyclonedx-json=/src/sbom.cyclonedx.json
+      displayName: 'Generate SBOM'
+
+    - task: CopyFiles@2
+      displayName: 'Copy SBOM to Staging'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)'
+        Contents: 'sbom.*.json'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
+
+# =============================================================================
+# STAGE 4: TEST
+# =============================================================================
+- stage: Test
+  displayName: 'Test'
+  dependsOn: Build
+  jobs:
+  - job: UnitTests
+    displayName: 'Unit Tests'
+    steps:
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: $(dotnetVersion)
+
+    - script: dotnet restore
+      displayName: 'Restore Dependencies'
+
+    - script: |
+        dotnet test --configuration $(buildConfiguration) \
+          --collect:"XPlat Code Coverage" \
+          --logger trx \
+          --results-directory $(Build.SourcesDirectory)/TestResults \
+          -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+      displayName: 'Run Unit Tests'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'VSTest'
+        testResultsFiles: '**/*.trx'
+        searchFolder: '$(Build.SourcesDirectory)/TestResults'
+        failTaskOnFailedTests: true
+
+    - task: PublishCodeCoverageResults@2
+      displayName: 'Publish Code Coverage'
+      inputs:
+        summaryFileLocation: '$(Build.SourcesDirectory)/**/coverage.cobertura.xml'
+
+  - job: IntegrationTests
+    displayName: 'Integration Tests'
+    dependsOn: UnitTests
+    steps:
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: $(dotnetVersion)
+
+    - script: |
+        docker-compose -f docker-compose.test.yml up -d
+      displayName: 'Start Test Dependencies'
+
+    - script: dotnet restore
+      displayName: 'Restore Dependencies'
+
+    - script: |
+        dotnet test --configuration $(buildConfiguration) \
+          --filter "Category=Integration" \
+          --logger trx
+      displayName: 'Run Integration Tests'
+
+    - script: |
+        docker-compose -f docker-compose.test.yml down
+      displayName: 'Stop Test Dependencies'
+      condition: always()
+
+# =============================================================================
+# STAGE 5: SCAN (Container)
+# =============================================================================
+- stage: Scan
+  displayName: 'Scan'
+  dependsOn: Build
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+  jobs:
+  - job: DockerBuild
+    displayName: 'Build & Scan Docker Image'
+    steps:
+    # SEC-005: Dockerfile Linting
+    - script: |
+        docker run --rm -i hadolint/hadolint < Dockerfile
+      displayName: 'Hadolint Dockerfile Check'
+
+    - task: Docker@2
+      displayName: 'Build Docker Image'
+      inputs:
+        command: 'build'
+        repository: $(imageRepository)
+        dockerfile: '**/Dockerfile'
+        tags: |
+          $(Build.BuildId)
+          latest
+
+    # SEC-004: Container Scanning
+    - script: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:latest image \
+          --exit-code 1 \
+          --severity CRITICAL,HIGH \
+          $(imageRepository):$(Build.BuildId)
+      displayName: 'Trivy Container Scan'
+
+    - task: Docker@2
+      displayName: 'Push to Registry'
+      inputs:
+        command: 'push'
+        repository: $(imageRepository)
+        containerRegistry: 'ACR-ServiceConnection'
+        tags: |
+          $(Build.BuildId)
+          latest
+
+# =============================================================================
+# STAGE 6: DEPLOY
+# =============================================================================
+- stage: DeployDev
+  displayName: 'Deploy to Development'
+  dependsOn: Test
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployToDev
+    displayName: 'Deploy to Dev Environment'
+    environment: 'development'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appType: 'webApp'
+              appName: '$(webAppName)-dev'
+              package: '$(Pipeline.Workspace)/drop/app'
+
+          - script: |
+              curl -f https://$(webAppName)-dev.azurewebsites.net/health || exit 1
+            displayName: 'Smoke Test'
+
+- stage: DeployStaging
+  displayName: 'Deploy to Staging'
+  dependsOn: Test
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/'))
+  jobs:
+  - deployment: DeployToStaging
+    displayName: 'Deploy to Staging Environment'
+    environment: 'staging'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appType: 'webApp'
+              appName: '$(webAppName)-staging'
+              package: '$(Pipeline.Workspace)/drop/app'
+
+        postRouteTraffic:
+          steps:
+          - script: |
+              curl -f https://$(webAppName)-staging.azurewebsites.net/health || exit 1
+            displayName: 'Health Check'
+
+          # SEC-007: DAST Scan on Staging
+          - script: |
+              mkdir -p $(Build.SourcesDirectory)/reports
+              docker run --rm -v $(Build.SourcesDirectory)/reports:/zap/wrk:rw \
+                -t owasp/zap2docker-stable zap-baseline.py \
+                -t https://$(webAppName)-staging.azurewebsites.net \
+                -r zap-report.html \
+                -J zap-report.json \
+                -I
+            displayName: 'OWASP ZAP Baseline Scan'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish ZAP Report'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/reports'
+              ArtifactName: 'zap-reports'
+            condition: always()
+
+- stage: DeployProd
+  displayName: 'Deploy to Production'
+  dependsOn: Test
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProd
+    displayName: 'Deploy to Production Environment'
+    environment: 'production'
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - task: ManualValidation@0
+            displayName: 'Approval Required'
+            inputs:
+              notifyUsers: 'devops-team@company.com'
+              instructions: |
+                Please review and approve the production deployment.
+
+                Checklist:
+                - [ ] All tests passed
+                - [ ] Security scans clean
+                - [ ] SBOM generated
+                - [ ] Rollback plan ready
+
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              appType: 'webApp'
+              appName: '$(webAppName)-prod'
+              package: '$(Pipeline.Workspace)/drop/app'
+
+        postRouteTraffic:
+          steps:
+          - script: |
+              curl -f https://$(webAppName)-prod.azurewebsites.net/health || exit 1
+            displayName: 'Health Check'
+
+        on:
+          failure:
+            steps:
+            - script: |
+                echo "Deployment failed. Initiating rollback..."
+              displayName: 'Rollback Notification'

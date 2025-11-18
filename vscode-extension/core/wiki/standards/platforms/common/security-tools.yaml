@@ -1,0 +1,529 @@
+# Security Tools Mapping - Platform Agnostic
+# Maps security tool categories to platform-specific implementations
+# Version: 2.0.0 - Updated 2025-11-18
+
+secret_scanning:
+  id: SEC-001
+  name: Secret Scanning
+  description: Detect hardcoded secrets, API keys, and credentials
+  required: true
+
+  azure:
+    # Primary: TruffleHog via Docker (works everywhere)
+    primary:
+      type: script
+      script: |
+        docker run --rm -v "$(Build.SourcesDirectory):/src" \
+          trufflesecurity/trufflehog:latest \
+          filesystem /src --fail --no-update
+      displayName: 'TruffleHog Secret Scan'
+      continueOnError: false
+
+    # Alternative: Microsoft Security DevOps
+    alternative:
+      task: MicrosoftSecurityDevOps@1
+      inputs:
+        categories: 'secrets'
+
+  github:
+    primary:
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.pull_request.base.sha }}
+        head: ${{ github.event.pull_request.head.sha }}
+        extra_args: --fail
+
+    alternative:
+      # GitHub native secret scanning (Enterprise only)
+      type: native
+      note: Requires GitHub Advanced Security license
+
+sast:
+  id: SEC-002
+  name: Static Application Security Testing
+  description: Analyze source code for security vulnerabilities
+  required: true
+
+  azure:
+    primary:
+      - task: SonarQubePrepare@6
+        displayName: 'Prepare SonarQube Analysis'
+        inputs:
+          SonarQube: 'SonarQube-Connection'
+          scannerMode: 'CLI'
+          configMode: 'manual'
+          cliProjectKey: '$(Build.Repository.Name)'
+          extraProperties: |
+            sonar.sources=.
+      - task: SonarQubeAnalyze@6
+        displayName: 'Run SonarQube Analysis'
+      - task: SonarQubePublish@6
+        displayName: 'Publish SonarQube Results'
+        inputs:
+          pollingTimeoutSec: '300'
+
+  github:
+    primary:
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      with:
+        args: >
+          -Dsonar.organization=${{ vars.SONAR_ORG }}
+          -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+
+  # Language-specific SonarQube properties
+  language_properties:
+    dotnet:
+      - sonar.cs.opencover.reportsPaths=**/coverage.opencover.xml
+      - sonar.cs.vstest.reportsPaths=**/*.trx
+    node:
+      - sonar.javascript.lcov.reportPaths=coverage/lcov.info
+      - sonar.typescript.lcov.reportPaths=coverage/lcov.info
+    python:
+      - sonar.python.coverage.reportPaths=coverage.xml
+      - sonar.python.xunit.reportPath=test-results.xml
+
+dependency_scanning:
+  id: SEC-003
+  name: Software Composition Analysis
+  description: Scan dependencies for known vulnerabilities
+  required: true
+
+  azure:
+    primary:
+      task: SnykSecurityScan@1
+      displayName: 'Snyk Security Scan'
+      inputs:
+        serviceConnectionEndpoint: 'Snyk-Connection'
+        testType: 'app'
+        severityThreshold: 'high'
+        failOnIssues: true
+
+    # Language-specific audits (run before Snyk)
+    language_audits:
+      node:
+        script: npm audit --audit-level=high
+        displayName: 'NPM Security Audit'
+      dotnet:
+        script: dotnet list package --vulnerable --include-transitive
+        displayName: '.NET Vulnerability Check'
+      python:
+        script: pip install safety && safety check -r requirements.txt
+        displayName: 'Python Safety Check'
+
+  github:
+    primary:
+      uses: snyk/actions/node@master
+      with:
+        args: --severity-threshold=high
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+    # Language-specific actions
+    language_actions:
+      node:
+        uses: snyk/actions/node@master
+      dotnet:
+        uses: snyk/actions/dotnet@master
+      python:
+        uses: snyk/actions/python@master
+
+container_scanning:
+  id: SEC-004
+  name: Container Image Scanning
+  description: Scan container images for vulnerabilities
+  required: false
+  condition: usesDocker
+
+  azure:
+    primary:
+      type: script
+      script: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:latest image \
+          --exit-code 1 \
+          --severity CRITICAL,HIGH \
+          $(imageRepository):$(Build.BuildId)
+      displayName: 'Trivy Container Scan'
+      continueOnError: false
+
+    alternative:
+      task: MicrosoftSecurityDevOps@1
+      inputs:
+        categories: 'containers'
+
+  github:
+    primary:
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH'
+
+dockerfile_linting:
+  id: SEC-005
+  name: Dockerfile Linting
+  description: Lint Dockerfiles for best practices
+  required: false
+  condition: usesDocker
+
+  azure:
+    primary:
+      type: script
+      script: |
+        docker run --rm -i hadolint/hadolint < Dockerfile
+      displayName: 'Hadolint Dockerfile Check'
+
+  github:
+    primary:
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile
+        failure-threshold: warning
+
+infrastructure_scanning:
+  id: SEC-006
+  name: Infrastructure as Code Scanning
+  description: Scan IaC templates for misconfigurations
+  required: false
+  condition: hasInfrastructure
+
+  azure:
+    primary:
+      task: MicrosoftSecurityDevOps@1
+      inputs:
+        categories: 'IaC'
+
+    alternative:
+      type: script
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory):/src \
+          bridgecrew/checkov -d /src --framework all
+      displayName: 'Checkov IaC Scan'
+
+  github:
+    primary:
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: .
+        framework: all
+        soft_fail: false
+
+# === NEW SECURITY TOOLS (v2.0) ===
+
+dast:
+  id: SEC-007
+  name: Dynamic Application Security Testing
+  description: Test running applications for vulnerabilities
+  required: true
+  condition: is_web_app
+  stage: deploy
+
+  azure:
+    primary:
+      type: script
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory)/reports:/zap/wrk:rw \
+          -t owasp/zap2docker-stable zap-baseline.py \
+          -t $(applicationUrl) \
+          -r zap-report.html \
+          -J zap-report.json \
+          -I
+      displayName: 'OWASP ZAP Baseline Scan'
+      continueOnError: false
+
+    # Full scan for staging/production
+    full_scan:
+      type: script
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory)/reports:/zap/wrk:rw \
+          -t owasp/zap2docker-stable zap-full-scan.py \
+          -t $(applicationUrl) \
+          -r zap-full-report.html \
+          -J zap-full-report.json \
+          -I
+      displayName: 'OWASP ZAP Full Scan'
+
+    # API scan for REST/GraphQL
+    api_scan:
+      type: script
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory):/zap/wrk:rw \
+          -t owasp/zap2docker-stable zap-api-scan.py \
+          -t $(openApiSpecUrl) \
+          -f openapi \
+          -r api-scan-report.html \
+          -J api-scan-report.json
+      displayName: 'OWASP ZAP API Scan'
+
+  github:
+    primary:
+      uses: zaproxy/action-baseline@v0.12.0
+      with:
+        target: ${{ env.APPLICATION_URL }}
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-I'
+
+    full_scan:
+      uses: zaproxy/action-full-scan@v0.10.0
+      with:
+        target: ${{ env.APPLICATION_URL }}
+        rules_file_name: '.zap/rules.tsv'
+
+    api_scan:
+      uses: zaproxy/action-api-scan@v0.7.0
+      with:
+        target: ${{ env.OPENAPI_SPEC_URL }}
+        format: openapi
+
+  configuration:
+    rules_file: |
+      # .zap/rules.tsv - Customize ZAP rules
+      # Rule ID	Action	Description
+      10015	IGNORE	Incomplete or No Cache-control Header Set
+      10037	IGNORE	Server Leaks Information via "X-Powered-By"
+
+license_compliance:
+  id: SEC-008
+  name: License Compliance
+  description: Ensure dependencies use approved licenses
+  required: true
+  stage: security
+
+  approved_licenses:
+    - MIT
+    - Apache-2.0
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+    - MPL-2.0
+    - CC0-1.0
+    - Unlicense
+
+  prohibited_licenses:
+    - GPL-2.0
+    - GPL-3.0
+    - AGPL-3.0
+    - SSPL-1.0
+    - CC-BY-NC-*
+
+  azure:
+    node:
+      type: script
+      script: |
+        npx license-checker --json --out licenses.json
+        npx license-checker --failOn "GPL;AGPL;SSPL;CC-BY-NC"
+      displayName: 'NPM License Check'
+
+    dotnet:
+      type: script
+      script: |
+        dotnet tool install --global dotnet-project-licenses
+        dotnet-project-licenses -i . -o licenses.json --export-license-texts
+        dotnet-project-licenses -i . --fail-on-forbidden \
+          --forbidden GPL-2.0-only GPL-3.0-only AGPL-3.0-only
+      displayName: '.NET License Check'
+
+    python:
+      type: script
+      script: |
+        pip install pip-licenses
+        pip-licenses --format=json --output-file=licenses.json
+        pip-licenses --fail-on "GPL;AGPL"
+      displayName: 'Python License Check'
+
+    java:
+      type: script
+      script: |
+        mvn license:add-third-party
+        mvn license:check-file-header
+      displayName: 'Maven License Check'
+
+  github:
+    node:
+      run: |
+        npx license-checker --json --out licenses.json
+        npx license-checker --failOn "GPL;AGPL;SSPL"
+
+    dotnet:
+      run: |
+        dotnet tool install --global dotnet-project-licenses
+        dotnet-project-licenses -i . --fail-on-forbidden
+
+    python:
+      run: |
+        pip install pip-licenses
+        pip-licenses --fail-on "GPL;AGPL"
+
+    # Alternative: FOSSA for comprehensive analysis
+    alternative:
+      uses: fossas/fossa-action@main
+      with:
+        api-key: ${{ secrets.FOSSA_API_KEY }}
+
+api_security:
+  id: SEC-009
+  name: API Security Testing
+  description: Test APIs for OWASP API Top 10 vulnerabilities
+  required: false
+  condition: is_api_project
+  stage: test
+
+  azure:
+    primary:
+      type: script
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory):/zap/wrk:rw \
+          -t owasp/zap2docker-stable zap-api-scan.py \
+          -t $(openApiSpecPath) \
+          -f openapi \
+          -r api-security-report.html \
+          -w api-security-report.md \
+          -J api-security-report.json \
+          -I
+      displayName: 'OWASP ZAP API Security Scan'
+
+    # Postman/Newman for contract testing
+    contract_testing:
+      type: script
+      script: |
+        npm install -g newman
+        newman run $(postmanCollection) \
+          --environment $(postmanEnvironment) \
+          --reporters cli,junit \
+          --reporter-junit-export results/api-tests.xml
+      displayName: 'API Contract Testing'
+
+    # 42Crunch for OpenAPI security audit
+    openapi_audit:
+      task: 42Crunch@1
+      inputs:
+        apiToken: $(42CRUNCH_API_TOKEN)
+        collectionName: $(Build.Repository.Name)
+        minScore: 70
+
+  github:
+    primary:
+      uses: zaproxy/action-api-scan@v0.7.0
+      with:
+        target: ${{ env.OPENAPI_SPEC_URL }}
+        format: openapi
+        fail_action: true
+
+    contract_testing:
+      run: |
+        npm install -g newman
+        newman run ${{ env.POSTMAN_COLLECTION }} \
+          --environment ${{ env.POSTMAN_ENV }} \
+          --reporters cli,junit
+
+    openapi_audit:
+      uses: 42Crunch/api-security-audit-action@v3
+      with:
+        api-token: ${{ secrets.API_42CRUNCH_TOKEN }}
+        min-score: 70
+
+  checks:
+    - Authentication & Authorization
+    - Rate Limiting
+    - Input Validation
+    - Error Handling
+    - Data Exposure
+    - Injection Attacks
+
+sbom_generation:
+  id: SEC-010
+  name: Software Bill of Materials
+  description: Generate SBOM for supply chain security
+  required: true
+  stage: build
+
+  formats:
+    - spdx-json
+    - cyclonedx-json
+
+  azure:
+    primary:
+      type: script
+      script: |
+        # Generate SBOM using Syft
+        docker run --rm -v $(Build.SourcesDirectory):/src \
+          anchore/syft:latest /src \
+          -o spdx-json=/src/sbom.spdx.json \
+          -o cyclonedx-json=/src/sbom.cyclonedx.json
+
+        # Copy to artifact staging
+        cp sbom.*.json $(Build.ArtifactStagingDirectory)/
+      displayName: 'Generate SBOM with Syft'
+
+    # Alternative: Microsoft SBOM Tool
+    alternative:
+      type: script
+      script: |
+        dotnet tool install --global Microsoft.Sbom.DotNetTool
+        sbom-tool generate -b $(Build.SourcesDirectory) \
+          -bc $(Build.SourcesDirectory) \
+          -pn $(Build.Repository.Name) \
+          -pv $(Build.BuildNumber) \
+          -ps "Company Name" \
+          -nsb https://company.com/sbom
+      displayName: 'Generate SBOM with Microsoft Tool'
+
+    publish:
+      task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'sbom'
+      displayName: 'Publish SBOM'
+
+  github:
+    primary:
+      uses: anchore/sbom-action@v0
+      with:
+        format: spdx-json
+        output-file: sbom.spdx.json
+        artifact-name: sbom
+
+    # Also generate CycloneDX format
+    cyclonedx:
+      uses: anchore/sbom-action@v0
+      with:
+        format: cyclonedx-json
+        output-file: sbom.cyclonedx.json
+
+    # Alternative: GitHub native SBOM
+    native:
+      uses: advanced-security/sbom-generator-action@v1
+
+    # Dependency submission for GitHub Dependency Graph
+    dependency_submission:
+      uses: anchore/sbom-action/publish-sbom@v0
+      with:
+        sbom-artifact-match: sbom.spdx.json
+
+  verification:
+    # Verify SBOM integrity
+    azure:
+      script: |
+        docker run --rm -v $(Build.SourcesDirectory):/src \
+          anchore/grype:latest sbom:/src/sbom.spdx.json \
+          --fail-on high
+      displayName: 'Verify SBOM with Grype'
+
+    github:
+      uses: anchore/scan-action@v3
+      with:
+        sbom: sbom.spdx.json
+        fail-build: true
+        severity-cutoff: high
+
+  retention:
+    artifact: 3 years
+    location: Release artifacts
+    compliance: Required for SOC2, ISO 27001

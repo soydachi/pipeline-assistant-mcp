@@ -1,0 +1,244 @@
+# Cloud Services Configuration
+# Platform-agnostic service definitions with platform-specific implementations
+
+databases:
+  azure_sql:
+    id: azuresql
+    name: Azure SQL Database
+    category: database
+    connection_string_format: 'Server=tcp:{server}.database.windows.net,1433;Database={database};User ID={username};Password={password};Encrypt=true;Connection Timeout=30;'
+
+    variables:
+      azure:
+        - name: sqlServerName
+          value: 'sql-$(Build.Repository.Name)-{environment}'
+        - name: sqlDatabaseName
+          value: 'db-$(Build.Repository.Name)'
+        - name: sqlUsername
+          value: '$(SQL_ADMIN_USERNAME)'
+        - name: sqlPassword
+          value: '$(SQL_ADMIN_PASSWORD)'
+      github:
+        - name: SQL_SERVER_NAME
+          value: 'sql-${{ github.event.repository.name }}-{environment}'
+        - name: SQL_DATABASE_NAME
+          value: 'db-${{ github.event.repository.name }}'
+
+  cosmosdb:
+    id: cosmosdb
+    name: Azure Cosmos DB
+    category: database
+    connection_string_format: 'AccountEndpoint=https://{account}.documents.azure.com:443/;AccountKey={key};'
+
+    variables:
+      azure:
+        - name: cosmosDbName
+          value: 'cosmos-$(Build.Repository.Name)-{environment}'
+        - name: cosmosDbKey
+          value: '$(COSMOS_PRIMARY_KEY)'
+        - name: cosmosDbEndpoint
+          value: 'https://$(cosmosDbName).documents.azure.com:443/'
+      github:
+        - name: COSMOS_DB_NAME
+          value: 'cosmos-${{ github.event.repository.name }}-{environment}'
+
+  postgresql:
+    id: postgresql
+    name: PostgreSQL
+    category: database
+    connection_string_format: 'Host={host};Database={database};Username={username};Password={password};'
+
+    variables:
+      azure:
+        - name: postgresHost
+          value: 'psql-$(Build.Repository.Name)-{environment}.postgres.database.azure.com'
+        - name: postgresDatabase
+          value: '$(POSTGRES_DB)'
+        - name: postgresUser
+          value: '$(POSTGRES_USER)'
+        - name: postgresPassword
+          value: '$(POSTGRES_PASSWORD)'
+
+caching:
+  redis:
+    id: redis
+    name: Redis Cache
+    category: cache
+    connection_string_format: '{host}:{port},password={password},ssl=True,abortConnect=False'
+
+    variables:
+      azure:
+        - name: redisName
+          value: 'redis-$(Build.Repository.Name)-{environment}'
+        - name: redisConnectionString
+          value: '$(REDIS_CONNECTION_STRING)'
+        - name: redisCacheKey
+          value: '$(REDIS_PRIMARY_KEY)'
+      github:
+        - name: REDIS_NAME
+          value: 'redis-${{ github.event.repository.name }}-{environment}'
+
+messaging:
+  service_bus:
+    id: servicebus
+    name: Azure Service Bus
+    category: messaging
+
+    variables:
+      azure:
+        - name: serviceBusNamespace
+          value: 'sb-$(Build.Repository.Name)-{environment}'
+        - name: serviceBusConnectionString
+          value: '$(SERVICE_BUS_CONNECTION_STRING)'
+        - name: serviceBusQueueName
+          value: 'main-queue'
+      github:
+        - name: SERVICE_BUS_NAMESPACE
+          value: 'sb-${{ github.event.repository.name }}-{environment}'
+
+  event_hub:
+    id: eventhub
+    name: Azure Event Hub
+    category: messaging
+
+    variables:
+      azure:
+        - name: eventHubNamespace
+          value: 'eh-$(Build.Repository.Name)-{environment}'
+        - name: eventHubConnectionString
+          value: '$(EVENT_HUB_CONNECTION_STRING)'
+
+  rabbitmq:
+    id: rabbitmq
+    name: RabbitMQ
+    category: messaging
+
+    # Test container for integration tests
+    test_container:
+      azure:
+        services:
+          rabbitmq:
+            image: rabbitmq:3-management
+            ports:
+              - 5672:5672
+              - 15672:15672
+      github:
+        services:
+          rabbitmq:
+            image: rabbitmq:3-management
+            ports:
+              - 5672:5672
+              - 15672:15672
+
+storage:
+  blob_storage:
+    id: storage
+    name: Azure Blob Storage
+    category: storage
+
+    variables:
+      azure:
+        - name: storageAccountName
+          value: 'st$(Build.Repository.Name){environment}'
+        - name: storageConnectionString
+          value: '$(STORAGE_CONNECTION_STRING)'
+      github:
+        - name: STORAGE_ACCOUNT_NAME
+          value: 'st${{ github.event.repository.name }}{environment}'
+
+  s3:
+    id: s3
+    name: AWS S3
+    category: storage
+
+    variables:
+      azure:
+        - name: s3BucketName
+          value: '$(Build.Repository.Name)-{environment}'
+        - name: awsAccessKey
+          value: '$(AWS_ACCESS_KEY_ID)'
+        - name: awsSecretKey
+          value: '$(AWS_SECRET_ACCESS_KEY)'
+
+secrets:
+  key_vault:
+    id: keyvault
+    name: Azure Key Vault
+    category: secrets
+
+    # Task to retrieve secrets
+    tasks:
+      azure:
+        task: AzureKeyVault@2
+        inputs:
+          azureSubscription: 'Azure-ServiceConnection'
+          KeyVaultName: '$(keyVaultName)'
+          SecretsFilter: '*'
+          RunAsPreJob: true
+      github:
+        uses: Azure/get-keyvault-secrets@v1
+        with:
+          keyvault: '${{ env.KEY_VAULT_NAME }}'
+          secrets: '*'
+
+monitoring:
+  application_insights:
+    id: appinsights
+    name: Application Insights
+    category: monitoring
+
+    variables:
+      azure:
+        - name: appInsightsName
+          value: 'ai-$(Build.Repository.Name)-{environment}'
+        - name: instrumentationKey
+          value: '$(APP_INSIGHTS_KEY)'
+        - name: connectionString
+          value: '$(APP_INSIGHTS_CONNECTION_STRING)'
+
+container_registry:
+  acr:
+    id: acr
+    name: Azure Container Registry
+    category: registry
+
+    variables:
+      azure:
+        - name: dockerRegistry
+          value: '$(acrName).azurecr.io'
+        - name: imageRepository
+          value: '$(Build.Repository.Name)'
+      github:
+        - name: REGISTRY
+          value: '${{ env.ACR_NAME }}.azurecr.io'
+        - name: IMAGE_NAME
+          value: '${{ github.event.repository.name }}'
+
+  ghcr:
+    id: ghcr
+    name: GitHub Container Registry
+    category: registry
+
+    variables:
+      github:
+        - name: REGISTRY
+          value: 'ghcr.io'
+        - name: IMAGE_NAME
+          value: '${{ github.repository }}'
+
+  dockerhub:
+    id: dockerhub
+    name: Docker Hub
+    category: registry
+
+    variables:
+      azure:
+        - name: dockerRegistry
+          value: 'docker.io'
+        - name: imageRepository
+          value: '$(DOCKERHUB_USERNAME)/$(Build.Repository.Name)'
+      github:
+        - name: REGISTRY
+          value: 'docker.io'
+        - name: IMAGE_NAME
+          value: '${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}'

@@ -1,0 +1,378 @@
+# GitHub Actions Mappings
+# Valid action names and versions for GitHub Actions workflows
+# Version: 2.0.0 - Updated 2025-11-18
+
+core:
+  checkout:
+    uses: actions/checkout@v4
+    name: 'Checkout code'
+
+  upload_artifact:
+    uses: actions/upload-artifact@v4
+    with:
+      name: '${name}'
+      path: '${path}'
+    name: 'Upload artifact'
+
+  download_artifact:
+    uses: actions/download-artifact@v4
+    with:
+      name: '${name}'
+      path: '${path}'
+    name: 'Download artifact'
+
+runtime_setup:
+  node:
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20.x'
+      cache: 'npm'
+    name: 'Setup Node.js'
+
+  dotnet:
+    uses: actions/setup-dotnet@v4
+    with:
+      dotnet-version: '8.x'
+    name: 'Setup .NET SDK'
+
+  python:
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.11'
+      cache: 'pip'
+    name: 'Setup Python'
+
+  java:
+    uses: actions/setup-java@v4
+    with:
+      distribution: 'temurin'
+      java-version: '17'
+      cache: 'maven'
+    name: 'Setup Java'
+
+  go:
+    uses: actions/setup-go@v5
+    with:
+      go-version: '1.21'
+      cache: true
+    name: 'Setup Go'
+
+caching:
+  generic:
+    uses: actions/cache@v4
+    with:
+      key: '${key}'
+      path: '${path}'
+      restore-keys: '${restoreKeys}'
+    name: 'Cache dependencies'
+
+docker:
+  build_push:
+    uses: docker/build-push-action@v5
+    with:
+      context: .
+      push: '${push}'
+      tags: '${tags}'
+      labels: '${labels}'
+    name: 'Build and push Docker image'
+
+  login_ghcr:
+    uses: docker/login-action@v3
+    with:
+      registry: ghcr.io
+      username: '${{ github.actor }}'
+      password: '${{ secrets.GITHUB_TOKEN }}'
+    name: 'Login to GitHub Container Registry'
+
+  login_dockerhub:
+    uses: docker/login-action@v3
+    with:
+      username: '${{ secrets.DOCKERHUB_USERNAME }}'
+      password: '${{ secrets.DOCKERHUB_TOKEN }}'
+    name: 'Login to Docker Hub'
+
+  login_acr:
+    uses: docker/login-action@v3
+    with:
+      registry: '${{ env.ACR_NAME }}.azurecr.io'
+      username: '${{ secrets.ACR_USERNAME }}'
+      password: '${{ secrets.ACR_PASSWORD }}'
+    name: 'Login to Azure Container Registry'
+
+  metadata:
+    uses: docker/metadata-action@v5
+    with:
+      images: '${images}'
+      tags: |
+        type=sha,prefix=
+        type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+    name: 'Extract Docker metadata'
+
+testing:
+  publish_results:
+    uses: dorny/test-reporter@v1
+    if: success() || failure()
+    with:
+      name: '${name}'
+      path: '${path}'
+      reporter: '${reporter}'
+    name: 'Publish test results'
+
+  # Reporter options: java-junit, dotnet-trx, dotnet-nunit
+
+  codecov:
+    uses: codecov/codecov-action@v4
+    with:
+      files: '${files}'
+      fail_ci_if_error: true
+    env:
+      CODECOV_TOKEN: '${{ secrets.CODECOV_TOKEN }}'
+    name: 'Upload coverage to Codecov'
+
+security:
+  # GitHub native security
+  codeql_init:
+    uses: github/codeql-action/init@v3
+    with:
+      languages: '${languages}'
+    name: 'Initialize CodeQL'
+
+  codeql_analyze:
+    uses: github/codeql-action/analyze@v3
+    with:
+      category: '${category}'
+    name: 'Perform CodeQL Analysis'
+
+  dependency_review:
+    uses: actions/dependency-review-action@v4
+    name: 'Dependency Review'
+
+  # SEC-001: Secret Scanning
+  trufflehog:
+    uses: trufflesecurity/trufflehog@main
+    with:
+      path: ./
+      base: '${{ github.event.pull_request.base.sha }}'
+      head: '${{ github.event.pull_request.head.sha }}'
+      extra_args: --fail
+    name: 'TruffleHog Secret Scan'
+
+  # SEC-002: SAST
+  sonarcloud:
+    uses: SonarSource/sonarcloud-github-action@master
+    env:
+      GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+      SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}'
+    with:
+      args: >
+        -Dsonar.organization=${{ vars.SONAR_ORG }}
+        -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+    name: 'SonarCloud Analysis'
+
+  # SEC-003: Dependency Scanning
+  snyk_node:
+    uses: snyk/actions/node@master
+    with:
+      args: --severity-threshold=high
+    env:
+      SNYK_TOKEN: '${{ secrets.SNYK_TOKEN }}'
+    name: 'Snyk Security Scan (Node)'
+
+  snyk_dotnet:
+    uses: snyk/actions/dotnet@master
+    with:
+      args: --severity-threshold=high
+    env:
+      SNYK_TOKEN: '${{ secrets.SNYK_TOKEN }}'
+    name: 'Snyk Security Scan (.NET)'
+
+  snyk_python:
+    uses: snyk/actions/python@master
+    with:
+      args: --severity-threshold=high
+    env:
+      SNYK_TOKEN: '${{ secrets.SNYK_TOKEN }}'
+    name: 'Snyk Security Scan (Python)'
+
+  # SEC-004: Container Scanning
+  trivy:
+    uses: aquasecurity/trivy-action@master
+    with:
+      image-ref: '${{ env.IMAGE_NAME }}:${{ github.sha }}'
+      format: 'table'
+      exit-code: '1'
+      ignore-unfixed: true
+      vuln-type: 'os,library'
+      severity: 'CRITICAL,HIGH'
+    name: 'Trivy Container Scan'
+
+  # SEC-005: Dockerfile Linting
+  hadolint:
+    uses: hadolint/hadolint-action@v3.1.0
+    with:
+      dockerfile: Dockerfile
+      failure-threshold: warning
+    name: 'Hadolint Dockerfile Check'
+
+  # SEC-006: IaC Scanning
+  checkov:
+    uses: bridgecrewio/checkov-action@master
+    with:
+      directory: .
+      framework: all
+      soft_fail: false
+    name: 'Checkov IaC Scan'
+
+  # SEC-007: DAST
+  zap_baseline:
+    uses: zaproxy/action-baseline@v0.12.0
+    with:
+      target: '${{ env.APPLICATION_URL }}'
+      rules_file_name: '.zap/rules.tsv'
+      cmd_options: '-I'
+    name: 'OWASP ZAP Baseline Scan'
+
+  zap_full:
+    uses: zaproxy/action-full-scan@v0.10.0
+    with:
+      target: '${{ env.APPLICATION_URL }}'
+      rules_file_name: '.zap/rules.tsv'
+    name: 'OWASP ZAP Full Scan'
+
+  zap_api:
+    uses: zaproxy/action-api-scan@v0.7.0
+    with:
+      target: '${{ env.OPENAPI_SPEC_URL }}'
+      format: openapi
+    name: 'OWASP ZAP API Scan'
+
+  # SEC-008: License Compliance
+  fossa:
+    uses: fossas/fossa-action@main
+    with:
+      api-key: '${{ secrets.FOSSA_API_KEY }}'
+    name: 'FOSSA License Scan'
+
+  # SEC-009: API Security
+  api_security_audit:
+    uses: 42Crunch/api-security-audit-action@v3
+    with:
+      api-token: '${{ secrets.API_42CRUNCH_TOKEN }}'
+      min-score: 70
+    name: '42Crunch API Security Audit'
+
+  # SEC-010: SBOM Generation
+  sbom_syft:
+    uses: anchore/sbom-action@v0
+    with:
+      format: spdx-json
+      output-file: sbom.spdx.json
+      artifact-name: sbom
+    name: 'Generate SBOM with Syft'
+
+  sbom_cyclonedx:
+    uses: anchore/sbom-action@v0
+    with:
+      format: cyclonedx-json
+      output-file: sbom.cyclonedx.json
+    name: 'Generate SBOM (CycloneDX)'
+
+  sbom_verify:
+    uses: anchore/scan-action@v3
+    with:
+      sbom: sbom.spdx.json
+      fail-build: true
+      severity-cutoff: high
+    name: 'Verify SBOM with Grype'
+
+  sbom_submit:
+    uses: anchore/sbom-action/publish-sbom@v0
+    with:
+      sbom-artifact-match: sbom.spdx.json
+    name: 'Submit SBOM to Dependency Graph'
+
+azure:
+  login:
+    uses: azure/login@v2
+    with:
+      creds: '${{ secrets.AZURE_CREDENTIALS }}'
+    name: 'Azure Login'
+
+  webapp_deploy:
+    uses: azure/webapps-deploy@v3
+    with:
+      app-name: '${appName}'
+      package: '${package}'
+    name: 'Deploy to Azure Web App'
+
+  container_deploy:
+    uses: azure/webapps-deploy@v3
+    with:
+      app-name: '${appName}'
+      images: '${images}'
+    name: 'Deploy container to Azure'
+
+  aks_set_context:
+    uses: azure/aks-set-context@v3
+    with:
+      resource-group: '${resourceGroup}'
+      cluster-name: '${clusterName}'
+    name: 'Set AKS context'
+
+  k8s_deploy:
+    uses: azure/k8s-deploy@v4
+    with:
+      manifests: '${manifests}'
+      images: '${images}'
+      namespace: '${namespace}'
+    name: 'Deploy to Kubernetes'
+
+aws:
+  configure_credentials:
+    uses: aws-actions/configure-aws-credentials@v4
+    with:
+      aws-access-key-id: '${{ secrets.AWS_ACCESS_KEY_ID }}'
+      aws-secret-access-key: '${{ secrets.AWS_SECRET_ACCESS_KEY }}'
+      aws-region: '${region}'
+    name: 'Configure AWS credentials'
+
+  ecr_login:
+    uses: aws-actions/amazon-ecr-login@v2
+    name: 'Login to Amazon ECR'
+
+  ecs_deploy:
+    uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+    with:
+      task-definition: '${taskDefinition}'
+      service: '${service}'
+      cluster: '${cluster}'
+      wait-for-service-stability: true
+    name: 'Deploy to ECS'
+
+# Variables syntax
+variables:
+  run_id: '${{ github.run_id }}'
+  run_number: '${{ github.run_number }}'
+  branch: '${{ github.ref_name }}'
+  repository: '${{ github.repository }}'
+  repository_name: '${{ github.event.repository.name }}'
+  owner: '${{ github.repository_owner }}'
+  commit: '${{ github.sha }}'
+  commit_short: '${{ github.sha }}'
+  actor: '${{ github.actor }}'
+  workspace: '${{ github.workspace }}'
+  event_name: '${{ github.event_name }}'
+  base_ref: '${{ github.base_ref }}'
+  head_ref: '${{ github.head_ref }}'
+
+# Condition expressions
+conditions:
+  is_main: "github.ref == 'refs/heads/main'"
+  is_develop: "github.ref == 'refs/heads/develop'"
+  is_pr: "github.event_name == 'pull_request'"
+  is_push: "github.event_name == 'push'"
+  is_tag: "startsWith(github.ref, 'refs/tags/')"
+  always: 'always()'
+  success: 'success()'
+  failure: 'failure()'
+  cancelled: 'cancelled()'

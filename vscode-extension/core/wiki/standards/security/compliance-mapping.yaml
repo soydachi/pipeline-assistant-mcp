@@ -1,0 +1,259 @@
+# Compliance Mapping - Security Controls to Frameworks
+# Maps pipeline security controls to compliance requirements
+
+version: '2.0.0'
+
+frameworks:
+  soc2:
+    name: SOC 2 Type II
+    description: Service Organization Control 2
+    trust_principles:
+      - security
+      - availability
+      - processing_integrity
+      - confidentiality
+      - privacy
+
+  iso27001:
+    name: ISO/IEC 27001:2022
+    description: Information Security Management System
+
+  pci_dss:
+    name: PCI DSS v4.0
+    description: Payment Card Industry Data Security Standard
+    note: Only applicable if handling payment card data
+
+  hipaa:
+    name: HIPAA
+    description: Health Insurance Portability and Accountability Act
+    note: Only applicable if handling PHI
+
+# Control mappings
+mappings:
+  # Secret Scanning
+  SEC-001:
+    policy: Secret Scanning
+    frameworks:
+      soc2:
+        controls: [CC6.1, CC6.7]
+        criteria: |
+          Logical access security software generates system activity logs
+          that track unauthorized access attempts.
+      iso27001:
+        controls: [A.9.4.3, A.12.4.1]
+        description: Password management system, Event logging
+      pci_dss:
+        controls: ['6.5.3', '8.2.1']
+        description: Secure cryptographic storage, unique identification
+
+  # SAST
+  SEC-002:
+    policy: Static Application Security Testing
+    frameworks:
+      soc2:
+        controls: [CC7.1, CC8.1]
+        criteria: |
+          Detection of unauthorized changes in software and configuration
+          through comparison to baseline.
+      iso27001:
+        controls: [A.14.2.1, A.14.2.5]
+        description: Secure development policy, secure system engineering
+      pci_dss:
+        controls: ['6.3.1', '6.3.2']
+        description: Code review, security coding techniques
+
+  # Dependency Scanning
+  SEC-003:
+    policy: Software Composition Analysis
+    frameworks:
+      soc2:
+        controls: [CC6.1, CC7.2]
+        criteria: |
+          Vulnerability management programs include process for identifying
+          and remediating known vulnerabilities.
+      iso27001:
+        controls: [A.12.6.1, A.14.2.1]
+        description: Management of technical vulnerabilities
+      pci_dss:
+        controls: ['6.3.3', '11.3.1']
+        description: Third-party software review, vulnerability scans
+
+  # Container Scanning
+  SEC-004:
+    policy: Container Image Scanning
+    frameworks:
+      soc2:
+        controls: [CC7.1, CC7.2]
+        criteria: |
+          System components are monitored for anomalies.
+      iso27001:
+        controls: [A.12.6.1]
+        description: Management of technical vulnerabilities
+      pci_dss:
+        controls: ['6.3.3', '11.3.2']
+        description: Third-party review, internal vulnerability scans
+
+  # IaC Scanning
+  SEC-006:
+    policy: Infrastructure as Code Scanning
+    frameworks:
+      soc2:
+        controls: [CC6.6, CC7.1]
+        criteria: |
+          System boundary protections and configuration management.
+      iso27001:
+        controls: [A.12.1.4, A.17.2.1]
+        description: Separation of environments, availability of information processing
+      pci_dss:
+        controls: ['2.2.1', '6.4.1']
+        description: Configuration standards, separate environments
+
+  # DAST
+  SEC-007:
+    policy: Dynamic Application Security Testing
+    frameworks:
+      soc2:
+        controls: [CC4.2, CC7.2]
+        criteria: |
+          Regular testing of system components for vulnerabilities.
+      iso27001:
+        controls: [A.14.2.8, A.18.2.3]
+        description: System security testing, technical compliance review
+      pci_dss:
+        controls: ['6.6', '11.3.3']
+        description: Web application firewall or code review, application penetration testing
+
+  # License Compliance
+  SEC-008:
+    policy: License Compliance
+    frameworks:
+      soc2:
+        controls: [CC3.2]
+        criteria: |
+          Intellectual property and licensing requirements are identified.
+      iso27001:
+        controls: [A.18.1.2]
+        description: Intellectual property rights
+
+  # SBOM
+  SEC-010:
+    policy: Software Bill of Materials
+    frameworks:
+      soc2:
+        controls: [CC3.4, CC7.2]
+        criteria: |
+          Inventory of system components is maintained.
+      iso27001:
+        controls: [A.8.1.1, A.12.6.1]
+        description: Inventory of assets, management of technical vulnerabilities
+      pci_dss:
+        controls: ['6.3.2']
+        description: Software inventory management
+
+  # Branch Protection
+  COM-001:
+    policy: Branch Protection
+    frameworks:
+      soc2:
+        controls: [CC6.1, CC8.1]
+        criteria: |
+          Changes to system components are authorized.
+      iso27001:
+        controls: [A.12.1.2, A.14.2.2]
+        description: Change management, system change control procedures
+      pci_dss:
+        controls: ['6.4.5']
+        description: Change control procedures
+
+  # Approval Gates
+  COM-002:
+    policy: Production Approval Gates
+    frameworks:
+      soc2:
+        controls: [CC6.1, CC8.1]
+        criteria: |
+          Changes are authorized, designed, developed, configured,
+          documented, tested, and approved before implementation.
+      iso27001:
+        controls: [A.12.1.2, A.14.2.9]
+        description: Change management, system acceptance testing
+      pci_dss:
+        controls: ['6.4.5.1', '6.4.5.2']
+        description: Documentation and approval of changes
+
+  # Audit Logging
+  COM-003:
+    policy: Audit Logging
+    frameworks:
+      soc2:
+        controls: [CC7.2, CC7.3]
+        criteria: |
+          System activity is logged and available for evaluation.
+      iso27001:
+        controls: [A.12.4.1, A.12.4.2]
+        description: Event logging, protection of log information
+      pci_dss:
+        controls: ['10.2', '10.3']
+        description: Audit trails, audit trail entries
+
+# Evidence collection
+evidence:
+  automated:
+    - type: pipeline_logs
+      description: CI/CD execution logs
+      retention: 365 days
+      location: Azure DevOps / GitHub Actions
+
+    - type: security_scan_results
+      description: Results from all security tools
+      retention: 365 days
+      location: SonarQube, Snyk Dashboard
+
+    - type: approval_records
+      description: Production deployment approvals
+      retention: 3 years
+      location: Azure DevOps / GitHub Environments
+
+    - type: sbom_artifacts
+      description: Software Bill of Materials
+      retention: 3 years
+      location: Artifact storage
+
+  manual:
+    - type: exception_requests
+      description: Security policy exception documentation
+      retention: 3 years
+
+    - type: risk_assessments
+      description: Security risk assessment documents
+      retention: 3 years
+
+# Audit support
+audit:
+  preparation:
+    - Ensure all controls are documented
+    - Verify evidence collection is complete
+    - Review exception documentation
+    - Prepare control matrix
+
+  reports:
+    - name: Control Implementation Report
+      frequency: quarterly
+      contents:
+        - Control status (implemented/partial/not-implemented)
+        - Evidence locations
+        - Exception list
+        - Remediation plans
+
+    - name: Vulnerability Management Report
+      frequency: monthly
+      contents:
+        - Vulnerabilities by severity
+        - SLA compliance
+        - Trends
+        - Outstanding items
+
+  contacts:
+    compliance: compliance@company.com
+    security: security@company.com
+    audit: internal-audit@company.com
