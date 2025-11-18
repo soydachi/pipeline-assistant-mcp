@@ -128,8 +128,8 @@ const pinoConfig: pino.LoggerOptions = {
   },
 };
 
-// Create base logger
-const baseLogger = pino(pinoConfig);
+// Create base logger - write to stderr to avoid interfering with MCP stdout
+const baseLogger = pino(pinoConfig, pino.destination(2));
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 

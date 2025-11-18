@@ -25,7 +25,7 @@ export interface ContainerConfig {
  * Default configuration values
  */
 export const DEFAULT_CONFIG: ContainerConfig = {
-  wikiPath: WIKI_PATHS.STANDARDS,
+  wikiPath: process.env.WIKI_PATH || WIKI_PATHS.STANDARDS,
 };
 
 /**
