@@ -569,59 +569,6 @@ export class AzureDevOpsClient {
     }
   }
 
-  /**
-   * Obtiene contenido de un archivo en un PR
-   *
-   * Implementa: Escenario 6.1.8 - Obtener contenido de archivo en PR
-   */
-  async getFileContent(pullRequestId: number, filePath: string): Promise<string> {
-    this.ensureConnected();
-
-    const startTime = Date.now();
-
-    try {
-      // Obtener información del PR para saber el commit HEAD
-      const pr = await this.getPullRequest(pullRequestId);
-
-      if (!pr.lastMergeSourceCommit?.commitId) {
-        throw new AzureDevOpsError(
-          'PR does not have a source commit',
-          400
-        );
-      }
-
-      // Obtener item desde el commit HEAD del PR
-      const versionDescriptor: GitVersionDescriptor = {
-        versionType: 1, // GitVersionType.Commit
-        version: pr.lastMergeSourceCommit.commitId,
-      };
-
-      const item = await this.gitApi!.getItem(
-        this.connectionInfo!.repositoryId,
-        filePath,
-        this.config.project,
-        undefined,
-        undefined,
-        false,
-        false,
-        false,
-        versionDescriptor
-      );
-
-      if (!item || !item.content) {
-        throw new ResourceNotFoundError('File', filePath);
-      }
-
-      const duration = Date.now() - startTime;
-      this.recordMetric('get_file_content', duration, 200);
-
-      return item.content;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.recordMetric('get_file_content', duration, 0, error as Error);
-      throw this.handleApiError(error, 'get_file_content');
-    }
-  }
 
   /**
    * Filtra PRs que tienen archivos de pipeline modificados
@@ -695,6 +642,130 @@ export class AzureDevOpsClient {
       );
     }
     this.ensureApi();
+  }
+
+  /**
+   * Obtiene los archivos modificados en un Pull Request
+   *
+   * Implementa: Escenario 6.1.7 - Obtener archivos modificados en PR
+   * Con retry automático según configuración
+   */
+  async getPullRequestChanges(pullRequestId: number): Promise<GitPullRequestChange[]> {
+    this.ensureConnected();
+
+    return this.executeWithRetry(async () => {
+      const startTime = Date.now();
+
+      try {
+        const iterations = await this.gitApi!.getPullRequestIterations(
+          this.connectionInfo!.repositoryId,
+          pullRequestId,
+          this.config.project
+        );
+
+        if (!iterations || iterations.length === 0) {
+          this.logWarn('No iterations found for pull request', { pullRequestId });
+          return [];
+        }
+
+        // Obtener la última iteración
+        const lastIteration = iterations[iterations.length - 1];
+
+        if (!lastIteration.id) {
+          this.logWarn('Last iteration has no ID', { pullRequestId });
+          return [];
+        }
+
+        // Obtener cambios de la última iteración
+        const changes = await this.gitApi!.getPullRequestIterationChanges(
+          this.connectionInfo!.repositoryId,
+          pullRequestId,
+          lastIteration.id,
+          this.config.project
+        );
+
+        const duration = Date.now() - startTime;
+        this.recordMetric('get_pull_request_changes', duration, 200);
+
+        this.logInfo('Pull request changes retrieved', {
+          pullRequestId,
+          iterationId: lastIteration.id,
+          changeCount: changes?.changeEntries?.length || 0,
+        });
+
+        return changes?.changeEntries || [];
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        this.recordMetric('get_pull_request_changes', duration, 500);
+        throw error;
+      }
+    }, 'get_pull_request_changes');
+  }
+
+  /**
+   * Obtiene el contenido de un archivo en un Pull Request
+   *
+   * Implementa: Escenario 6.1.8 - Obtener contenido de archivo en PR
+   * Con retry automático según configuración
+   */
+  async getFileContent(pullRequestId: number, filePath: string): Promise<string> {
+    this.ensureConnected();
+
+    return this.executeWithRetry(async () => {
+      const startTime = Date.now();
+
+      try {
+        // Primero obtener el PR para conocer el commit
+        const pr = await this.getPullRequest(pullRequestId, true);
+
+        if (!pr.lastMergeSourceCommit?.commitId) {
+          throw new AzureDevOpsError(
+            'Pull Request does not have a source commit',
+            undefined,
+            'NO_SOURCE_COMMIT',
+            { pullRequestId }
+          );
+        }
+
+        const commitId = pr.lastMergeSourceCommit.commitId;
+
+        // Obtener el contenido del archivo en ese commit
+        const item = await this.gitApi!.getItem(
+          this.connectionInfo!.repositoryId,
+          filePath,
+          this.config.project,
+          undefined, // scopePath
+          undefined, // recursionLevel
+          undefined, // includeContentMetadata
+          undefined, // latestProcessedChange
+          undefined, // download
+          {
+            versionType: 1, // GitVersionType.Commit
+            version: commitId,
+          }
+        );
+
+        if (!item || !item.content) {
+          throw new ResourceNotFoundError('File', filePath);
+        }
+
+        const duration = Date.now() - startTime;
+        this.recordMetric('get_file_content', duration, 200);
+
+        this.logDebug('File content retrieved', {
+          pullRequestId,
+          filePath,
+          commitId,
+          contentLength: item.content.length,
+        });
+
+        return item.content;
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        this.recordMetric('get_file_content', duration, 500);
+        throw error;
+      }
+    }, 'get_file_content');
   }
 
   /**
