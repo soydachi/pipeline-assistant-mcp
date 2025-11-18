@@ -35,6 +35,16 @@ Sistema inteligente basado en Model Context Protocol (MCP) que automatiza la gen
 - **Badges visuales** de compliance score
 - **Modo learning vs enforcement** configurable
 
+#### Azure DevOps Integration ✅ NUEVO
+- **Cliente API completo** con autenticación PAT
+- **PR Bot automático** con análisis en tiempo real
+- **Comentarios inline** en líneas específicas del código
+- **Status checks** para bloquear/aprobar merge
+- **Webhook handler** para análisis automático en push
+- **Gestión de threads** con resolución automática
+- **Retry logic** con backoff exponencial
+- **Cache y métricas** de performance
+
 ### 📊 Gestión y Métricas
 - **Wiki auto-actualizable** con file watching
 - **Versionado de políticas** con historial completo
@@ -59,7 +69,15 @@ pipeline-assistant-mcp/
 │   ├── policy-enforcer.ts
 │   ├── wiki-manager.ts
 │   ├── wiki-parser.ts
-│   └── pr-bot.ts
+│   ├── pr-bot.ts
+│   └── azure-devops/         # Integración Azure DevOps
+│       ├── client.ts         # Cliente API
+│       ├── pr-bot.ts         # Bot de PRs
+│       ├── config.ts         # Configuración
+│       ├── types.ts          # Tipos TypeScript
+│       ├── webhook-handler.ts
+│       ├── comment-thread-manager.ts
+│       └── pr-status-manager.ts
 ├── vscode-extension/      # Extensión VS Code
 │   └── src/
 │       ├── extension.ts
@@ -293,15 +311,19 @@ npm test -- --testNamePattern="Feature 1"
 
 ## 🚀 Roadmap
 
-### v1.0 (Actual)
+### v1.0 (Actual) ✅
 - ✅ Generación automática de pipelines
 - ✅ Análisis y validación completa
-- ✅ Integración VS Code
+- ✅ Integración VS Code con 6 providers
 - ✅ Bot para GitHub PRs
 - ✅ Gestión de wiki y métricas
+- ✅ **Integración Azure DevOps completa (Fases 1 y 2)**
+  - Cliente API con autenticación y retry logic
+  - PR Bot con comentarios inline
+  - Status checks para bloquear/aprobar merge
+  - Webhook handler para análisis automático
 
 ### v1.1 (Q1 2025)
-- [ ] Integración con Azure DevOps
 - [ ] Bot para GitLab
 - [ ] Dashboard web de métricas
 - [ ] Auto-fix avanzado con IA

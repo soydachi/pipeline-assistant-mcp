@@ -229,6 +229,29 @@ La extensión muestra en la barra de estado:
 
 MIT
 
+## 🔷 Integración con Azure DevOps
+
+La extensión también soporta análisis de pipelines para Azure DevOps:
+
+### Configuración
+
+Añade a tu `settings.json`:
+```json
+{
+  "pipelineAssistant.azureDevOps.enabled": true,
+  "pipelineAssistant.azureDevOps.orgUrl": "https://dev.azure.com/tu-org",
+  "pipelineAssistant.azureDevOps.project": "MiProyecto"
+}
+```
+
+### Características Azure DevOps
+- Análisis de PRs automático
+- Comentarios inline en violaciones
+- Status checks para bloquear merge
+- Modo learning vs enforcement
+
+Para más información, consulta la [documentación completa](../README.md).
+
 ## 🙏 Créditos
 
 Desarrollado para demostración en charla sobre "IA generativa en DevSecOps".

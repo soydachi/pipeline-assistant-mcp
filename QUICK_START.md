@@ -189,6 +189,38 @@ node dist/cli/pipeline-assistant.js suggest --file examples/pipelines/pipeline-c
 4. **Sugerencias Contextuales**: No solo detecta, sugiere cómo arreglar
 5. **Simulación PR Bot**: Demo sin necesidad de GitHub token
 6. **Wiki de Estándares**: Base de conocimiento corporativa
+7. **Azure DevOps Integration**: Análisis de PRs con comentarios inline
+
+## 🔷 Azure DevOps (NUEVO)
+
+### Configuración Rápida
+
+```bash
+# Configurar variables
+export AZDO_ORG_URL="https://dev.azure.com/tu-organizacion"
+export AZDO_PAT="tu-personal-access-token"
+export AZDO_PROJECT="NombreDelProyecto"
+```
+
+### Comandos Azure DevOps
+
+```bash
+# Analizar PR específico (requiere configuración)
+# node dist/cli/azure-devops-cli.js analyze-pr --pr 123
+
+# Analizar con comentarios inline
+# node dist/cli/azure-devops-cli.js analyze-pr \
+#   --pr 123 \
+#   --post-comments \
+#   --mode enforcement
+```
+
+### Para Demo sin Azure DevOps
+
+Si no tienes acceso a Azure DevOps:
+- Mostrar arquitectura en `src/azure-devops/`
+- Explicar flujo con diagramas de PRESENTACION_TALLER.md
+- Mostrar tests: `npm test -- --testNamePattern="azure"`
 
 ## 🎬 Script de Presentación
 

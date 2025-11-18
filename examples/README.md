@@ -195,9 +195,42 @@ node dist/cli/pr-bot-cli.js check \
   --max-high 2
 ```
 
+## 🔷 Azure DevOps Integration (NUEVO)
+
+### Configurar Azure DevOps
+
+```bash
+# Variables de entorno requeridas
+export AZDO_ORG_URL="https://dev.azure.com/tu-org"
+export AZDO_PAT="tu-personal-access-token"
+export AZDO_PROJECT="NombreDelProyecto"
+```
+
+### Analizar PR en Azure DevOps
+
+```bash
+# Análisis básico
+node dist/cli/azure-devops-cli.js analyze-pr --pr 123
+
+# Con comentarios inline
+node dist/cli/azure-devops-cli.js analyze-pr \
+  --pr 123 \
+  --post-comments \
+  --mode learning
+
+# Modo enforcement (bloquea merge)
+node dist/cli/azure-devops-cli.js analyze-pr \
+  --pr 123 \
+  --post-comments \
+  --update-status \
+  --mode enforcement \
+  --min-score 80
+```
+
 ## 📝 Notas
 
 - Todos los ejemplos asumen que has compilado el proyecto con `npm run build`
 - Los tokens de GitHub deben tener permisos de `repo` y `pull_request`
+- Los tokens de Azure DevOps deben tener permisos de `Code`, `Work Items` y `Build`
 - Los archivos de configuración custom son opcionales
 - Los reportes pueden exportarse en formato markdown, JSON o HTML
