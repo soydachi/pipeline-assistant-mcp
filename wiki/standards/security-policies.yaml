@@ -1,3 +1,15 @@
+# =============================================================================
+# DEPRECATED: This file is deprecated and will be removed in version 3.0.0
+#
+# Please use the new structure:
+# - security/policies.yaml - Consolidated security policies
+# - security/sla.yaml - Remediation SLAs
+# - security/compliance-mapping.yaml - Framework mappings
+# - Full documentation: README.md
+#
+# Migration deadline: 2026-02-01
+# =============================================================================
+
 version: '1.0'
 policies:
   security:

@@ -1,0 +1,153 @@
+# Naming Conventions for CI/CD Pipelines
+# Consistent naming improves readability and maintainability
+
+version: '2.0.0'
+
+pipeline_naming:
+  pattern: '{project}-{type}-{platform}'
+  examples:
+    - my-api-ci-azure
+    - frontend-app-cd-github
+    - data-service-ci-cd-azure
+
+  types:
+    ci: Continuous Integration only
+    cd: Continuous Deployment only
+    ci-cd: Full pipeline
+
+variable_naming:
+  azure:
+    format: camelCase
+    examples:
+      - buildConfiguration
+      - dockerRegistry
+      - keyVaultName
+
+    # Predefined variables use PascalCase with dots
+    system_variables:
+      - Build.BuildId
+      - Build.SourceBranchName
+      - System.DefaultWorkingDirectory
+
+  github:
+    format: SCREAMING_SNAKE_CASE
+    examples:
+      - BUILD_CONFIGURATION
+      - DOCKER_REGISTRY
+      - KEY_VAULT_NAME
+
+    # GitHub context uses lowercase with dots
+    context_variables:
+      - github.sha
+      - github.ref_name
+      - secrets.REGISTRY_PASSWORD
+
+environment_naming:
+  pattern: '{app}-{env}'
+  environments:
+    - dev
+    - staging
+    - prod
+  examples:
+    - my-api-dev
+    - my-api-staging
+    - my-api-prod
+
+resource_naming:
+  azure_resources:
+    pattern: '{type}-{project}-{env}'
+    types:
+      app_service: app
+      function_app: func
+      storage_account: st
+      key_vault: kv
+      container_registry: acr
+      sql_server: sql
+      cosmos_db: cosmos
+      redis: redis
+      service_bus: sb
+      event_hub: eh
+      kubernetes: aks
+      app_insights: ai
+    examples:
+      - app-myapi-prod
+      - func-processor-staging
+      - st-myapiprod  # Storage accounts: no hyphens, max 24 chars
+      - kv-myapi-prod
+      - acr-myapi-prod
+
+artifact_naming:
+  pattern: '{project}-{version}-{build_id}'
+  examples:
+    - my-api-1.2.3-12345
+    - frontend-2.0.0-67890
+
+  docker_tags:
+    patterns:
+      - '{build_id}'           # Unique identifier
+      - '{semver}'             # Semantic version
+      - '{branch}-{short_sha}' # Branch tracking
+      - 'latest'               # Only for main/master
+    examples:
+      - '12345'
+      - '1.2.3'
+      - 'feature-abc-a1b2c3d'
+      - 'latest'
+
+branch_naming:
+  patterns:
+    feature: 'feature/{ticket-id}-{short-description}'
+    bugfix: 'bugfix/{ticket-id}-{short-description}'
+    hotfix: 'hotfix/{ticket-id}-{short-description}'
+    release: 'release/{version}'
+  examples:
+    - feature/JIRA-123-add-login
+    - bugfix/JIRA-456-fix-null-pointer
+    - hotfix/JIRA-789-security-patch
+    - release/1.2.0
+
+job_naming:
+  azure:
+    format: PascalCase
+    examples:
+      - BuildAndTest
+      - DeployToStaging
+      - SecurityScan
+
+  github:
+    format: kebab-case
+    examples:
+      - build-and-test
+      - deploy-to-staging
+      - security-scan
+
+step_naming:
+  displayName_format: 'Action - Target/Description'
+  examples:
+    - 'Install - Node.js 20.x'
+    - 'Build - Production bundle'
+    - 'Test - Unit tests with coverage'
+    - 'Scan - TruffleHog secret detection'
+    - 'Deploy - Azure Web App staging'
+
+service_connection_naming:
+  pattern: '{provider}-{purpose}-{env}'
+  examples:
+    - Azure-ServicePrincipal-prod
+    - SonarQube-Analysis-all
+    - Snyk-Security-all
+    - ACR-Registry-prod
+
+secret_naming:
+  pattern: '{SERVICE}_{TYPE}_{IDENTIFIER}'
+  examples:
+    - SQL_CONNECTION_STRING
+    - AZURE_CLIENT_SECRET
+    - SONAR_TOKEN
+    - SNYK_API_KEY
+
+  prohibited:
+    - password
+    - secret
+    - key
+    - Generic names without context

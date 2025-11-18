@@ -1,0 +1,246 @@
+# Quality Gates - Deployment Criteria by Environment
+# Defines what must pass before deploying to each environment
+
+version: '2.0.0'
+
+# Quality gate definitions
+gates:
+  development:
+    id: gate-dev
+    name: Development Quality Gate
+    description: Basic checks for feature branches
+    blocking: true
+
+    checks:
+      required:
+        - id: build
+          name: Build Success
+          description: Code compiles without errors
+
+        - id: unit_tests
+          name: Unit Tests Pass
+          description: All unit tests pass
+
+        - id: lint
+          name: Linting Pass
+          description: No linting errors
+
+        - id: secrets_scan
+          name: Secret Scanning
+          description: No secrets detected (SEC-001)
+          policy: SEC-001
+
+      recommended:
+        - id: coverage_minimum
+          name: Code Coverage
+          description: Coverage above minimum threshold
+          threshold: 60
+
+    auto_deploy: true
+    approval_required: false
+
+  staging:
+    id: gate-staging
+    name: Staging Quality Gate
+    description: Pre-production validation
+    blocking: true
+
+    checks:
+      required:
+        - id: build
+          name: Build Success
+
+        - id: all_tests
+          name: All Tests Pass
+          description: Unit, integration, and E2E tests pass
+
+        - id: coverage
+          name: Code Coverage
+          description: Coverage meets production threshold
+          threshold: 80
+
+        - id: security_scan
+          name: Security Scanning
+          description: All mandatory security scans pass
+          policies: [SEC-001, SEC-002, SEC-003]
+          severity_block: [CRITICAL, HIGH]
+
+        - id: sonarqube
+          name: SonarQube Quality Gate
+          description: SonarQube quality gate passes
+          metrics:
+            bugs: 0 (blocker/critical)
+            vulnerabilities: 0 (blocker/critical)
+            code_smells: A rating
+            coverage: 80%
+            duplications: < 3%
+
+        - id: container_scan
+          name: Container Scanning
+          description: No critical/high vulnerabilities in images
+          condition: usesDocker
+          policy: SEC-004
+
+        - id: license_compliance
+          name: License Compliance
+          description: All licenses are approved
+          policy: SEC-008
+
+      recommended:
+        - id: performance
+          name: Performance Tests
+          description: Performance benchmarks met
+
+        - id: dast
+          name: DAST Scan
+          description: No high/critical findings in dynamic scan
+          policy: SEC-007
+
+    auto_deploy: true
+    approval_required: false
+    smoke_tests: true
+
+  production:
+    id: gate-prod
+    name: Production Quality Gate
+    description: Full validation before production release
+    blocking: true
+
+    checks:
+      required:
+        # All staging checks plus:
+        - id: staging_gate_passed
+          name: Staging Gate Passed
+          description: All staging quality gates passed
+
+        - id: performance_verified
+          name: Performance Verified
+          description: Performance tests pass with production thresholds
+          metrics:
+            response_time_p99: '< 500ms'
+            error_rate: '< 1%'
+
+        - id: dast_passed
+          name: DAST Clean
+          description: Dynamic security scan passes
+          policy: SEC-007
+
+        - id: sbom_generated
+          name: SBOM Generated
+          description: Software Bill of Materials created
+          policy: SEC-010
+
+        - id: documentation
+          name: Documentation Updated
+          description: API docs and runbooks are current
+
+        - id: rollback_ready
+          name: Rollback Plan Ready
+          description: Rollback procedure documented and tested
+
+        - id: monitoring_ready
+          name: Monitoring Configured
+          description: Alerts and dashboards configured
+
+      approval:
+        required: true
+        min_approvers: 2
+        groups:
+          - tech-leads
+          - senior-engineers
+        timeout: 72 hours
+
+    auto_deploy: false
+    approval_required: true
+    deployment_windows:
+      preferred: 'Tuesday-Thursday 10:00-16:00 UTC'
+      blocked: 'Friday 14:00 - Monday 08:00 UTC'
+
+# SonarQube quality gate
+sonarqube:
+  quality_gate:
+    name: Corporate Standard
+    conditions:
+      - metric: new_reliability_rating
+        op: GT
+        value: 1  # Must be A
+
+      - metric: new_security_rating
+        op: GT
+        value: 1  # Must be A
+
+      - metric: new_maintainability_rating
+        op: GT
+        value: 1  # Must be A
+
+      - metric: new_coverage
+        op: LT
+        value: 80
+
+      - metric: new_duplicated_lines_density
+        op: GT
+        value: 3
+
+      - metric: new_blocker_violations
+        op: GT
+        value: 0
+
+      - metric: new_critical_violations
+        op: GT
+        value: 0
+
+# Gate enforcement
+enforcement:
+  mode: strict  # lenient | standard | strict
+
+  modes:
+    lenient:
+      description: Warn but don't block
+      action: warn
+
+    standard:
+      description: Block on required, warn on recommended
+      action: block_required
+
+    strict:
+      description: Block on all checks
+      action: block_all
+
+  override:
+    allowed: false
+    note: Quality gates cannot be bypassed
+
+# Gate status reporting
+reporting:
+  pr_status:
+    - Show all gate checks as GitHub/Azure status checks
+    - Block merge if required checks fail
+    - Show coverage diff in PR comment
+
+  dashboards:
+    - Gate pass rate by project
+    - Common failure reasons
+    - Time to pass gates
+
+  notifications:
+    on_failure:
+      channels: [slack, email]
+      include:
+        - Failed checks
+        - Failure details
+        - Remediation steps
+
+# Gate maintenance
+maintenance:
+  review_frequency: quarterly
+
+  evolution:
+    - Increase thresholds gradually
+    - Add new checks as tools mature
+    - Remove checks that aren't valuable
+
+  metrics_to_track:
+    - Gate pass rate
+    - Time to pass
+    - False positive rate
+    - Developer satisfaction

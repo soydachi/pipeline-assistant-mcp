@@ -1,5 +1,17 @@
 # Pipeline Standards - Estándares Corporativos CI/CD
 
+> **DEPRECATED**: This file is deprecated and will be removed in version 3.0.0
+>
+> Please use the new structure:
+> - **Stages**: [core/stages.yaml](core/stages.yaml)
+> - **Security**: [security/policies.yaml](security/policies.yaml)
+> - **Quality**: [quality/gates.yaml](quality/gates.yaml)
+> - **Full documentation**: [README.md](README.md)
+>
+> Migration deadline: 2026-02-01
+
+---
+
 ## Obligatorio
 
 ### 1. Estructura de Stages

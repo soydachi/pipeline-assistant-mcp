@@ -1,0 +1,171 @@
+# Pipeline Stages - Mandatory Structure
+# All pipelines MUST follow this stage order
+
+version: '2.0.0'
+
+stages:
+  mandatory:
+    - id: validate
+      name: Validate
+      order: 1
+      description: Code validation, linting, and syntax checks
+      purpose: Fail fast on basic issues before expensive operations
+      tasks:
+        - Syntax validation
+        - Linting (language-specific)
+        - Format checking
+        - Schema validation (if applicable)
+      examples:
+        azure:
+          - script: npm run lint
+          - script: dotnet format --verify-no-changes
+          - script: flake8 .
+        github:
+          - run: npm run lint
+          - run: dotnet format --verify-no-changes
+          - run: flake8 .
+
+    - id: security
+      name: Security
+      order: 2
+      description: Security scanning and vulnerability detection
+      purpose: Identify security issues before build artifacts are created
+      tasks:
+        - Secret scanning (SEC-001)
+        - SAST analysis (SEC-002)
+        - Dependency scanning (SEC-003)
+        - License compliance (SEC-008)
+      required_policies:
+        - SEC-001
+        - SEC-002
+        - SEC-003
+      gate:
+        block_on: [CRITICAL]
+        warn_on: [HIGH]
+
+    - id: build
+      name: Build
+      order: 3
+      description: Compile code and create artifacts
+      purpose: Generate deployable artifacts
+      tasks:
+        - Dependency installation
+        - Compilation
+        - Asset bundling
+        - Artifact packaging
+      outputs:
+        - Build artifacts
+        - Container images (if applicable)
+        - SBOM (Software Bill of Materials)
+
+    - id: test
+      name: Test
+      order: 4
+      description: Execute test suites
+      purpose: Validate functionality and prevent regressions
+      tasks:
+        - Unit tests
+        - Integration tests
+        - Code coverage collection
+        - Test result publishing
+      requirements:
+        minimum_coverage: 80
+        fail_on_test_failure: true
+        publish_results: true
+
+    - id: scan
+      name: Scan
+      order: 5
+      description: Post-build security scanning
+      purpose: Scan built artifacts for vulnerabilities
+      condition: when_artifacts_exist
+      tasks:
+        - Container image scanning (SEC-004)
+        - Dockerfile linting (SEC-005)
+        - IaC scanning (SEC-006)
+        - DAST (SEC-007) - staging/production only
+      required_policies:
+        conditional:
+          - policy: SEC-004
+            condition: usesDocker
+          - policy: SEC-005
+            condition: usesDocker
+          - policy: SEC-006
+            condition: hasInfrastructure
+
+    - id: deploy
+      name: Deploy
+      order: 6
+      description: Deploy to target environment
+      purpose: Release to environments with appropriate controls
+      tasks:
+        - Environment selection
+        - Approval gates (production)
+        - Deployment execution
+        - Health checks
+        - Rollback preparation
+      controls:
+        development:
+          approval_required: false
+          auto_deploy: true
+        staging:
+          approval_required: false
+          auto_deploy: true
+          smoke_tests: true
+        production:
+          approval_required: true
+          min_approvers: 2
+          auto_deploy: false
+          smoke_tests: true
+          rollback_ready: true
+
+  optional:
+    - id: performance
+      name: Performance
+      order: 7
+      description: Performance and load testing
+      condition: is_api_project OR is_web_app
+      tasks:
+        - Load testing
+        - Stress testing
+        - Performance benchmarks
+
+    - id: notify
+      name: Notify
+      order: 8
+      description: Notifications and reporting
+      tasks:
+        - Team notifications
+        - Metric publishing
+        - Documentation updates
+
+# Stage dependencies and conditions
+flow:
+  default: validate -> security -> build -> test -> scan -> deploy
+
+  conditions:
+    skip_security:
+      allowed: false
+      note: Security stage cannot be skipped
+
+    skip_test:
+      allowed: false
+      note: Test stage cannot be skipped
+
+    parallel_allowed:
+      - [validate, security]  # Can run in parallel
+      - [test, scan]          # Can run in parallel after build
+
+# Anti-patterns to avoid
+prohibited:
+  - pattern: deploy_before_test
+    description: Never deploy without running tests
+
+  - pattern: skip_security_on_error
+    description: Never use continueOnError for security tasks
+
+  - pattern: no_approval_production
+    description: Production deployments require approval gates
+
+  - pattern: hardcoded_secrets
+    description: Never hardcode credentials in pipeline

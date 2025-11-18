@@ -1,0 +1,218 @@
+# Security SLA - Vulnerability Remediation Timelines
+# Defines response times for security issues
+
+version: '2.0.0'
+
+# SLA definitions by severity
+sla:
+  critical:
+    severity: CRITICAL
+    cvss_range: '9.0 - 10.0'
+    description: Vulnerabilities that can be exploited remotely with no authentication
+    examples:
+      - Remote code execution
+      - SQL injection leading to data breach
+      - Authentication bypass
+      - Exposed secrets in production
+
+    response:
+      acknowledge: 1 hour
+      investigate: 4 hours
+      remediate: 24 hours
+      verify: 4 hours
+
+    escalation:
+      - after: 2 hours
+        to: security-team-lead
+      - after: 8 hours
+        to: ciso
+      - after: 16 hours
+        to: cto
+
+    actions:
+      immediate:
+        - Block deployment pipeline
+        - Notify security team
+        - Create incident ticket
+      if_in_production:
+        - Assess immediate risk
+        - Consider emergency rollback
+        - Prepare customer communication
+
+  high:
+    severity: HIGH
+    cvss_range: '7.0 - 8.9'
+    description: Vulnerabilities exploitable with some conditions
+    examples:
+      - XSS in sensitive areas
+      - CSRF on critical functions
+      - Privilege escalation
+      - Sensitive data exposure
+
+    response:
+      acknowledge: 4 hours
+      investigate: 1 day
+      remediate: 7 days
+      verify: 1 day
+
+    escalation:
+      - after: 3 days
+        to: security-team-lead
+      - after: 5 days
+        to: engineering-manager
+
+    actions:
+      - Block deployment to production
+      - Allow deployment to non-prod
+      - Schedule fix in current sprint
+
+  medium:
+    severity: MEDIUM
+    cvss_range: '4.0 - 6.9'
+    description: Vulnerabilities requiring significant conditions to exploit
+    examples:
+      - Reflected XSS
+      - Information disclosure (non-sensitive)
+      - Denial of service (limited)
+      - Missing security headers
+
+    response:
+      acknowledge: 1 day
+      investigate: 3 days
+      remediate: 30 days
+      verify: 3 days
+
+    escalation:
+      - after: 20 days
+        to: tech-lead
+
+    actions:
+      - Warn in pipeline but don't block
+      - Schedule fix in backlog
+      - Review in security retrospective
+
+  low:
+    severity: LOW
+    cvss_range: '0.1 - 3.9'
+    description: Minor issues with minimal impact
+    examples:
+      - Version disclosure
+      - Non-sensitive information leakage
+      - Minor misconfigurations
+      - Code quality issues
+
+    response:
+      acknowledge: 3 days
+      investigate: 7 days
+      remediate: 90 days
+      verify: 7 days
+
+    actions:
+      - Informational in pipeline
+      - Add to technical debt backlog
+      - Address during regular maintenance
+
+# SLA tracking and metrics
+tracking:
+  metrics:
+    - name: mttr_critical
+      description: Mean Time to Remediate Critical Issues
+      target: '< 24 hours'
+      calculation: average(remediation_time) WHERE severity = CRITICAL
+
+    - name: mttr_high
+      description: Mean Time to Remediate High Issues
+      target: '< 7 days'
+      calculation: average(remediation_time) WHERE severity = HIGH
+
+    - name: sla_compliance_rate
+      description: Percentage of issues resolved within SLA
+      target: '> 95%'
+      calculation: count(resolved_within_sla) / count(total_issues) * 100
+
+    - name: vulnerability_density
+      description: Vulnerabilities per 1000 lines of code
+      target: '< 1'
+      calculation: count(vulnerabilities) / (lines_of_code / 1000)
+
+    - name: security_debt
+      description: Total outstanding security issues weighted by severity
+      target: '< 100 points'
+      calculation: sum(CRITICAL*10 + HIGH*5 + MEDIUM*2 + LOW*1)
+
+  dashboards:
+    - name: Security Overview
+      metrics: [mttr_critical, mttr_high, sla_compliance_rate]
+      refresh: hourly
+
+    - name: Team Performance
+      metrics: [vulnerability_density, security_debt]
+      group_by: team
+      refresh: daily
+
+# Notification configuration
+notifications:
+  critical:
+    channels:
+      - type: slack
+        channel: '#security-alerts'
+        mention: '@security-oncall'
+      - type: email
+        to: security-oncall@company.com
+      - type: pagerduty
+        service: security-critical
+
+  high:
+    channels:
+      - type: slack
+        channel: '#security-alerts'
+      - type: email
+        to: security-team@company.com
+
+  medium:
+    channels:
+      - type: slack
+        channel: '#security-updates'
+
+  low:
+    channels:
+      - type: weekly_digest
+        to: tech-leads@company.com
+
+# Exception process for SLA extensions
+extensions:
+  allowed_reasons:
+    - Third-party dependency (waiting for upstream fix)
+    - Complex architectural change required
+    - Testing in progress
+
+  requirements:
+    - Documented risk assessment
+    - Temporary mitigation in place
+    - Security team approval
+    - Maximum extension: 2x original SLA
+
+  prohibited:
+    - Resource constraints
+    - Feature prioritization
+    - Lack of awareness
+
+# Compliance reporting
+reporting:
+  frequency: weekly
+  recipients:
+    - security-team
+    - engineering-leadership
+
+  contents:
+    - New vulnerabilities discovered
+    - SLA compliance status
+    - Overdue items
+    - Trends and patterns
+    - Recommended actions
+
+  quarterly_review:
+    - SLA appropriateness
+    - Tool effectiveness
+    - Process improvements
+    - Training needs
