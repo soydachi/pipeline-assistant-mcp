@@ -775,29 +775,45 @@ cat wiki/standards/quality/gates.yaml
 
 Experience real-time analysis and quick fixes directly in VS Code.
 
-### Step 1: Install the Extension
+### Step 1: Build the Extension Package
 
 ```bash
 cd vscode-extension
 npm install
 npm run compile
+npx vsce package
 cd ..
 ```
 
-### Step 2: Launch in Development Mode
+This creates `pipeline-assistant-vscode-1.0.0.vsix`.
 
-1. Open VS Code in the project root
-2. Press `F5` to launch a new window with the extension
-3. In the new window, open a `.yml` file
+### Step 2: Install the Extension
 
-### Step 3: Experience Real-Time Analysis
+**Option A: Via Command Line**
+```bash
+code --install-extension vscode-extension/pipeline-assistant-vscode-1.0.0.vsix
+```
 
-1. Open `examples/pipelines/pipeline-con-problemas.yml`
+**Option B: Via VS Code UI**
+1. Open VS Code
+2. Go to Extensions view (`Cmd+Shift+X` / `Ctrl+Shift+X`)
+3. Click `...` menu → "Install from VSIX..."
+4. Select `vscode-extension/pipeline-assistant-vscode-1.0.0.vsix`
+
+### Step 3: Reload VS Code
+
+After installation, reload VS Code:
+- Press `Cmd+Shift+P` / `Ctrl+Shift+P`
+- Type "Reload Window" and select it
+
+### Step 4: Experience Real-Time Analysis
+
+1. Open `docs/examples/problematic/hardcoded-secrets.yml`
 2. See red underlines on problematic lines
 3. Hover for issue descriptions
 4. Click lightbulb for quick fixes
 
-### Step 4: Use Snippets
+### Step 5: Use Snippets
 
 Create a new file and try:
 - `stage-security` - Complete security stage
