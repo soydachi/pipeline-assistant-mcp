@@ -7,6 +7,14 @@
     "outDir": "./dist",
     "rootDir": ".",
     "strict": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    // TODO: Enable after fixing all indexed access issues
+    // "noUncheckedIndexedAccess": true,
+    // TODO: Enable after fixing all optional property types
+    // "exactOptionalPropertyTypes": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
