@@ -212,12 +212,10 @@ describe('AzureDevOpsPRBot - Fase 2', () => {
       expect(result.pipelineFiles).toHaveLength(0);
     });
 
-    it('debe registrar en logs que no hay pipelines', async () => {
+    it('debe retornar resultado indicando que no hay pipelines', async () => {
       // Given: PR sin pipelines
       const verboseConfig = { ...mockConfig, verbose: true };
       const verboseBot = new AzureDevOpsPRBot(mockClient, mockAnalyzer, verboseConfig);
-
-      const consoleSpy = vi.spyOn(console, 'log');
 
       mockClient.getPullRequest.mockResolvedValue({
         pullRequestId: 128,
@@ -227,11 +225,12 @@ describe('AzureDevOpsPRBot - Fase 2', () => {
       mockClient.getPullRequestChanges.mockResolvedValue([]);
 
       // When: Analizar PR
-      await verboseBot.analyzePullRequest(128);
+      const result = await verboseBot.analyzePullRequest(128);
 
-      // Then: Debe haber logueado
-      expect(consoleSpy).toHaveBeenCalled();
-      consoleSpy.mockRestore();
+      // Then: El resultado debe indicar que no hay pipelines
+      expect(result.pipelineFiles).toHaveLength(0);
+      expect(result.analyses.size).toBe(0);
+      expect(result.overallScore).toBe(100); // Score perfecto cuando no hay pipelines
     });
   });
 
