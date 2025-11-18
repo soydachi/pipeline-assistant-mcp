@@ -16,6 +16,9 @@
 
 import { AzureDevOpsPRBot, type PRAnalysisResult } from './pr-bot.js';
 import type { AzureDevOpsConfig } from './types.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('WebhookHandler');
 
 /**
  * Tipos de eventos de webhook soportados
@@ -484,16 +487,10 @@ export class WebhookHandler {
     message: string,
     metadata?: Record<string, any>
   ): void {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level,
-      component: 'WebhookHandler',
-      message,
-      ...metadata,
-    };
-
     if (this.config.verbose) {
-      console.log(JSON.stringify(logEntry));
+      const logFn = level === 'error' ? logger.error :
+                    level === 'warn' ? logger.warn : logger.info;
+      logFn(message, metadata);
     }
   }
 }

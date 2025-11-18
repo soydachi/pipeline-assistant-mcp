@@ -2,6 +2,9 @@ import { Octokit } from '@octokit/rest';
 import { PipelineAnalyzer } from './pipeline-analyzer.js';
 import { WikiParser } from './wiki-parser.js';
 import { PolicyEnforcer } from './policy-enforcer.js';
+import { createLogger } from './utils/logger.js';
+
+const logger = createLogger('PRBot');
 
 export interface PRAnalysisConfig {
   githubToken: string;
@@ -223,7 +226,7 @@ export class PRBot {
       
       throw new Error('No se pudo obtener el contenido del archivo');
     } catch (error) {
-      console.error(`Error obteniendo archivo ${path}:`, error);
+      logger.error('Error getting file content', { path, error: error instanceof Error ? error.message : error });
       return '';
     }
   }
@@ -547,7 +550,7 @@ export class PRBot {
         labels,
       });
     } catch (error) {
-      console.error('Error adding labels:', error);
+      logger.error('Error adding labels', { labels, error: error instanceof Error ? error.message : error });
     }
   }
 
@@ -618,33 +621,35 @@ export class PRBot {
 
 // CLI para testing local
 export async function runPRAnalysis(config: PRAnalysisConfig): Promise<void> {
-  console.log(`🔍 Analyzing PR #${config.pullNumber}...`);
-  
+  logger.info('Starting PR analysis', { pullNumber: config.pullNumber });
+
   const bot = new PRBot(config);
-  
+
   try {
     // Realizar análisis
     const analysis = await bot.analyzePR();
-    
-    console.log(`📊 Overall Score: ${analysis.overallScore}%`);
-    console.log(`📁 Files Analyzed: ${analysis.summary.totalFiles}`);
-    console.log(`❌ Critical Issues: ${analysis.summary.criticalCount}`);
-    
+
+    logger.info('Analysis completed', {
+      overallScore: analysis.overallScore,
+      totalFiles: analysis.summary.totalFiles,
+      criticalCount: analysis.summary.criticalCount
+    });
+
     // Publicar comentarios
     await bot.postAnalysisComment(analysis);
-    console.log('✅ Main comment posted');
-    
+    logger.info('Main comment posted');
+
     // Publicar comentarios inline
     await bot.postInlineComments(analysis);
-    console.log('✅ Inline comments posted');
-    
+    logger.info('Inline comments posted');
+
     // Actualizar estado
     await bot.updatePRStatus(analysis);
-    console.log('✅ PR status updated');
-    
-    console.log('🎉 Analysis complete!');
+    logger.info('PR status updated');
+
+    logger.info('PR analysis complete');
   } catch (error) {
-    console.error('❌ Error during analysis:', error);
+    logger.error('Error during PR analysis', { error: error instanceof Error ? error.message : error });
     throw error;
   }
 }

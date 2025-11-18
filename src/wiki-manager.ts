@@ -4,6 +4,9 @@ import * as yaml from 'yaml';
 import { EventEmitter } from 'events';
 import * as crypto from 'crypto';
 import { WikiParser } from './wiki-parser.js';
+import { createLogger } from './utils/logger.js';
+
+const logger = createLogger('WikiManager');
 
 export interface WikiStandard {
   id: string;
@@ -305,7 +308,7 @@ export class WikiManager extends EventEmitter {
   // ============= Feature 5.2: Actualización automática de estándares =============
   
   async startAutoUpdate(intervalMs: number = 300000): Promise<void> {
-    console.log(`Starting wiki auto-update (interval: ${intervalMs}ms)`);
+    logger.info('Starting wiki auto-update', { intervalMs });
     
     // Cargar inicial
     await this.loadAllStandards();
@@ -332,7 +335,7 @@ export class WikiManager extends EventEmitter {
   private setupFileWatcher(): void {
     const watcher = fs.watch(this.wikiPath, { recursive: true }, async (eventType, filename) => {
       if (filename && (filename.endsWith('.md') || filename.endsWith('.yaml') || filename.endsWith('.yml'))) {
-        console.log(`Wiki file changed: ${filename}`);
+        logger.debug('Wiki file changed', { filename });
         
         // Debounce para evitar múltiples recargas
         clearTimeout(this.debounceTimer);
@@ -353,7 +356,7 @@ export class WikiManager extends EventEmitter {
     const currentChecksum = await this.calculateChecksum();
     
     if (currentChecksum !== this.lastChecksum) {
-      console.log('Wiki changes detected, reloading standards...');
+      logger.info('Wiki changes detected, reloading standards');
       
       // Guardar versión anterior
       if (this.standards.size > 0) {
@@ -378,7 +381,7 @@ export class WikiManager extends EventEmitter {
         changes: this.detectChanges()
       });
       
-      console.log(`Standards reloaded: ${newCount} standards (was ${previousCount})`);
+      logger.info('Standards reloaded', { newCount, previousCount });
     }
   }
 
@@ -464,7 +467,7 @@ export class WikiManager extends EventEmitter {
       }
     }
     
-    console.log(`Loaded ${this.templates.size} technology templates`);
+    logger.info('Technology templates loaded', { count: this.templates.size });
   }
 
   private extractTemplateMetadata(content: string): any {
@@ -473,11 +476,13 @@ export class WikiManager extends EventEmitter {
     if (metadataMatch) {
       try {
         return yaml.parse(metadataMatch[1]);
-      } catch (e) {
-        // Ignorar errores de parsing
+      } catch (error) {
+        logger.warn('Failed to parse template metadata', {
+          error: error instanceof Error ? error.message : error
+        });
       }
     }
-    
+
     return {};
   }
 
@@ -969,7 +974,7 @@ stages:
         'utf-8'
       );
     } catch (error) {
-      console.error('Error saving policy history:', error);
+      logger.error('Error saving policy history', { error: error instanceof Error ? error.message : error });
     }
   }
 
@@ -980,9 +985,9 @@ stages:
       try {
         const content = await fs.promises.readFile(historyFile, 'utf-8');
         this.policyHistory = JSON.parse(content);
-        console.log(`Loaded ${this.policyHistory.length} policy versions`);
+        logger.info('Policy history loaded', { count: this.policyHistory.length });
       } catch (error) {
-        console.error('Error loading policy history:', error);
+        logger.error('Error loading policy history', { error: error instanceof Error ? error.message : error });
       }
     }
   }
@@ -999,7 +1004,7 @@ stages:
     const targetVersion = this.getPolicyVersion(version);
     
     if (!targetVersion) {
-      console.error(`Version ${version} not found`);
+      logger.error('Version not found', { version });
       return false;
     }
     
@@ -1224,7 +1229,7 @@ stages:
         'utf-8'
       );
     } catch (error) {
-      console.error('Error saving metrics:', error);
+      logger.error('Error saving metrics', { error: error instanceof Error ? error.message : error });
     }
   }
 
@@ -1249,9 +1254,9 @@ stages:
           }
         }));
         
-        console.log(`Loaded metrics for ${this.metrics.length} periods`);
+        logger.info('Metrics loaded', { periods: this.metrics.length });
       } catch (error) {
-        console.error('Error loading metrics:', error);
+        logger.error('Error loading metrics', { error: error instanceof Error ? error.message : error });
       }
     }
   }
@@ -1374,7 +1379,7 @@ stages:
   // ============= Métodos principales de carga =============
   
   async loadAllStandards(): Promise<void> {
-    console.log('Loading all standards from wiki...');
+    logger.info('Loading all standards from wiki');
     
     // Cargar historial de políticas
     await this.loadPolicyHistory();
@@ -1391,7 +1396,11 @@ stages:
     // Calcular checksum inicial
     this.lastChecksum = await this.calculateChecksum();
     
-    console.log(`Loaded: ${this.standards.size} standards, ${this.rules.size} rules, ${this.templates.size} templates`);
+    logger.info('Wiki loaded', {
+      standards: this.standards.size,
+      rules: this.rules.size,
+      templates: this.templates.size
+    });
     
     this.emit('wiki:loaded', {
       standards: this.standards.size,

@@ -38,6 +38,9 @@ import type {
   Warning,
   Suggestion
 } from '../pipeline-analyzer.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('AzureDevOps-PRBot');
 
 /**
  * Resultado del análisis de un Pull Request
@@ -444,16 +447,10 @@ export class AzureDevOpsPRBot {
     message: string,
     metadata?: Record<string, any>
   ): void {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level,
-      component: 'AzureDevOpsPRBot',
-      message,
-      ...metadata,
-    };
-
     if (this.config.verbose) {
-      console.log(JSON.stringify(logEntry));
+      const logFn = level === 'error' ? logger.error :
+                    level === 'warn' ? logger.warn : logger.info;
+      logFn(message, metadata);
     }
   }
 }

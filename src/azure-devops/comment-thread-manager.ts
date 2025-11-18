@@ -25,6 +25,9 @@ import { AzureDevOpsClient } from './client.js';
 import type { AzureDevOpsConfig, PullRequestInfo } from './types.js';
 import type { AnalysisResult, Violation, Warning, Suggestion } from '../pipeline-analyzer.js';
 import type { PRAnalysisResult } from './pr-bot.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('CommentThreadManager');
 
 /**
  * Opciones para crear comment threads
@@ -495,16 +498,10 @@ export class CommentThreadManager {
     message: string,
     metadata?: Record<string, any>
   ): void {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level,
-      component: 'CommentThreadManager',
-      message,
-      ...metadata,
-    };
-
     if (this.config.verbose) {
-      console.log(JSON.stringify(logEntry));
+      const logFn = level === 'error' ? logger.error :
+                    level === 'warn' ? logger.warn : logger.info;
+      logFn(message, metadata);
     }
   }
 }

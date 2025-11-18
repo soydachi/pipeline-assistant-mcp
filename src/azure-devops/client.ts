@@ -52,6 +52,9 @@ import {
   ResourceNotFoundError,
   RateLimitError,
 } from './types.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('AzureDevOps-Client');
 
 /**
  * Cliente base para Azure DevOps
@@ -940,23 +943,11 @@ export class AzureDevOpsClient {
       metadata: this.redactSensitiveData(metadata),
     };
 
-    // Por ahora solo console log, en el futuro podría usar un logger estructurado
-    const logMessage = JSON.stringify({ message, ...logEntry });
-
-    switch (level) {
-      case 'debug':
-        console.debug(logMessage);
-        break;
-      case 'info':
-        console.info(logMessage);
-        break;
-      case 'warn':
-        console.warn(logMessage);
-        break;
-      case 'error':
-        console.error(logMessage);
-        break;
-    }
+    // Use structured logger
+    const logFn = level === 'error' ? logger.error :
+                  level === 'warn' ? logger.warn :
+                  level === 'debug' ? logger.debug : logger.info;
+    logFn(message, { ...logEntry });
   }
 
   /**

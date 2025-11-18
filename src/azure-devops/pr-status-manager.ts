@@ -23,6 +23,9 @@ import type {
 import { AzureDevOpsClient } from './client.js';
 import type { AzureDevOpsConfig } from './types.js';
 import type { PRAnalysisResult } from './pr-bot.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('PRStatusManager');
 
 /**
  * Resultado de actualizar status check
@@ -347,16 +350,10 @@ export class PRStatusManager {
     message: string,
     metadata?: Record<string, any>
   ): void {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level,
-      component: 'PRStatusManager',
-      message,
-      ...metadata,
-    };
-
     if (this.config.verbose) {
-      console.log(JSON.stringify(logEntry));
+      const logFn = level === 'error' ? logger.error :
+                    level === 'warn' ? logger.warn : logger.info;
+      logFn(message, metadata);
     }
   }
 }

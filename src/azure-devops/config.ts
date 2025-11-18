@@ -17,6 +17,9 @@ import type {
   AzureDevOpsConfig,
   RetryPolicyConfig,
 } from './types.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('AzureDevOps-Config');
 
 /**
  * Errores de validación de configuración
@@ -117,7 +120,7 @@ export class AzureDevOpsConfigManager {
    * @throws ConfigValidationError si la configuración es inválida
    */
   loadFromFile(filePath: string): AzureDevOpsConfig {
-    console.log(`Loading Azure DevOps config from file: ${filePath}`);
+    logger.info('Loading config from file', { filePath });
 
     if (!fs.existsSync(filePath)) {
       throw new Error(`Configuration file not found: ${filePath}`);
@@ -156,7 +159,7 @@ export class AzureDevOpsConfigManager {
    * @throws ConfigValidationError si la configuración es inválida
    */
   loadFromObject(config: Partial<AzureDevOpsConfig>): AzureDevOpsConfig {
-    console.log('Loading Azure DevOps config from object...');
+    logger.debug('Loading config from object');
 
     const mergedConfig: Partial<AzureDevOpsConfig> = {
       ...DEFAULT_CONFIG,
@@ -183,22 +186,22 @@ export class AzureDevOpsConfigManager {
     repositoryPath: string,
     baseConfig: AzureDevOpsConfig
   ): AzureDevOpsConfig {
-    console.log(`Checking for repository config override in: ${repositoryPath}`);
+    logger.debug('Checking for repository config override', { repositoryPath });
 
     const repoConfigPath = path.join(repositoryPath, '.pipeline-assistant.json');
 
     if (!fs.existsSync(repoConfigPath)) {
-      console.log('No repository override found, using base config');
+      logger.debug('No repository override found, using base config');
       return baseConfig;
     }
 
-    console.log('Found repository override, merging configurations...');
+    logger.info('Found repository override, merging configurations');
 
     let repoConfigContent: string;
     try {
       repoConfigContent = fs.readFileSync(repoConfigPath, 'utf-8');
     } catch (error) {
-      console.warn(`Failed to read repository config: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.warn('Failed to read repository config', { error: error instanceof Error ? error.message : error });
       return baseConfig;
     }
 
@@ -206,7 +209,7 @@ export class AzureDevOpsConfigManager {
     try {
       repoConfig = JSON.parse(repoConfigContent);
     } catch (error) {
-      console.warn(`Invalid JSON in repository config: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.warn('Invalid JSON in repository config', { error: error instanceof Error ? error.message : error });
       return baseConfig;
     }
 
@@ -224,7 +227,7 @@ export class AzureDevOpsConfigManager {
     this.config = this.validateAndMerge(mergedConfig);
     this.configSource = 'merged';
 
-    console.log('Configuration merged successfully');
+    logger.info('Configuration merged successfully');
     return this.config;
   }
 
@@ -398,8 +401,8 @@ export class AzureDevOpsConfigManager {
     const json = JSON.stringify(redacted, null, 2);
     fs.writeFileSync(filePath, json, 'utf-8');
 
-    console.log(`Configuration exported to: ${filePath}`);
-    console.log('NOTE: Personal Access Token was redacted for security');
+    logger.info('Configuration exported', { filePath });
+    logger.info('NOTE: Personal Access Token was redacted for security');
   }
 
   /**
@@ -473,32 +476,42 @@ export class AzureDevOpsConfigManager {
   }
 
   /**
+   * Gets configuration guide as a string for logging
+   */
+  static getConfigurationGuide(): string {
+    let guide = '\n=== Azure DevOps Configuration Guide ===\n\n';
+    guide += 'Required configuration fields:\n';
+    guide += '  - organizationUrl: Your Azure DevOps organization URL\n';
+    guide += '    Example: https://dev.azure.com/myorg\n\n';
+    guide += '  - personalAccessToken: PAT with required permissions\n';
+    guide += '    Required scopes:\n';
+    REQUIRED_PAT_SCOPES.forEach(scope => {
+      guide += `      - ${scope}\n`;
+    });
+    guide += '    Create PAT at: https://dev.azure.com/_usersSettings/tokens\n\n';
+    guide += '  - project: Name of your Azure DevOps project\n\n';
+    guide += 'Optional configuration fields:\n';
+    guide += '  - repository: Repository name (can be inferred)\n';
+    guide += '  - repositoryId: Repository ID (can be inferred)\n';
+    guide += '  - enforcementMode: "learning" (default) or "enforcement"\n';
+    guide += '  - strictMode: true or false (default: false)\n';
+    guide += '  - enableCache: true (default) or false\n';
+    guide += '  - timeout: API timeout in ms (default: 30000)\n';
+    guide += '  - verbose: Enable verbose logging (default: false)\n\n';
+    guide += 'Configuration methods:\n';
+    guide += '  1. Environment variables (AZDO_ORG_URL, AZDO_PAT, etc.)\n';
+    guide += '  2. JSON file (use loadFromFile)\n';
+    guide += '  3. Programmatically (use loadFromObject)\n';
+    guide += '  4. Repository override (.pipeline-assistant.json in repo root)\n\n';
+    guide += '========================================\n';
+    return guide;
+  }
+
+  /**
    * Imprime guía de configuración para ayudar al usuario
    */
   static printConfigurationGuide(): void {
-    console.log('\n=== Azure DevOps Configuration Guide ===\n');
-    console.log('Required configuration fields:');
-    console.log('  - organizationUrl: Your Azure DevOps organization URL');
-    console.log('    Example: https://dev.azure.com/myorg\n');
-    console.log('  - personalAccessToken: PAT with required permissions');
-    console.log('    Required scopes:');
-    REQUIRED_PAT_SCOPES.forEach(scope => console.log(`      - ${scope}`));
-    console.log('    Create PAT at: https://dev.azure.com/_usersSettings/tokens\n');
-    console.log('  - project: Name of your Azure DevOps project\n');
-    console.log('Optional configuration fields:');
-    console.log('  - repository: Repository name (can be inferred)');
-    console.log('  - repositoryId: Repository ID (can be inferred)');
-    console.log('  - enforcementMode: "learning" (default) or "enforcement"');
-    console.log('  - strictMode: true or false (default: false)');
-    console.log('  - enableCache: true (default) or false');
-    console.log('  - timeout: API timeout in ms (default: 30000)');
-    console.log('  - verbose: Enable verbose logging (default: false)\n');
-    console.log('Configuration methods:');
-    console.log('  1. Environment variables (AZDO_ORG_URL, AZDO_PAT, etc.)');
-    console.log('  2. JSON file (use loadFromFile)');
-    console.log('  3. Programmatically (use loadFromObject)');
-    console.log('  4. Repository override (.pipeline-assistant.json in repo root)\n');
-    console.log('========================================\n');
+    logger.info(AzureDevOpsConfigManager.getConfigurationGuide());
   }
 }
 
