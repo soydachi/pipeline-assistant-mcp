@@ -3,16 +3,19 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green)](https://nodejs.org/)
+[![Tests](https://img.shields.io/badge/Tests-259%20passing-brightgreen)](tests/)
 
 An intelligent CI/CD pipeline assistant powered by [Model Context Protocol (MCP)](https://modelcontextprotocol.io). Automatically generates, validates, and improves Azure DevOps and GitHub Actions pipelines according to corporate standards and DevSecOps best practices.
 
 ## Features
 
 - **Pipeline Generation** - Create complete pipelines from templates (.NET, Node.js, Python, Java, Go)
-- **Security Analysis** - Detect hardcoded secrets, missing security stages, and vulnerabilities
+- **Security Analysis** - Detect hardcoded secrets, missing security stages, and 15+ vulnerability types
 - **Compliance Scoring** - Calculate 0-100 scores with detailed breakdowns
 - **Multiple Integrations** - VS Code extension, GitHub Actions, Azure DevOps PR Bot
 - **Wiki Management** - Maintain versioned corporate standards with adoption metrics
+- **Rate Limiting** - Built-in rate limiting for webhook and API endpoints
+- **Secret Masking** - Automatic redaction of sensitive data in logs
 
 ## Quick Start
 
@@ -49,6 +52,7 @@ node dist/cli/wiki-cli.js standards --list
 | Document | Description |
 |----------|-------------|
 | [Usage Guide](docs/USAGE.md) | Complete setup and usage for all platforms |
+| [Workshop Guide](TALLER.md) | Step-by-step tutorial for all features |
 | [Contributing](CONTRIBUTING.md) | How to contribute to the project |
 | [Changelog](CHANGELOG.md) | Version history and release notes |
 
@@ -62,14 +66,23 @@ pipeline-assistant-mcp/
 │   ├── pipeline-analyzer.ts
 │   ├── policy-enforcer.ts
 │   ├── wiki-manager.ts
-│   └── azure-devops/       # Azure DevOps integration
+│   ├── container.ts        # Dependency injection
+│   ├── azure-devops/       # Azure DevOps integration
+│   │   ├── client.ts
+│   │   ├── pr-bot.ts
+│   │   ├── config.ts
+│   │   └── webhook-handler.ts
+│   └── utils/              # Shared utilities
+│       ├── logger.ts       # Structured logging
+│       ├── validation.ts   # Zod schemas
+│       └── rate-limiter.ts
 ├── cli/                    # Command-line tools
 │   ├── pipeline-assistant.ts
 │   ├── wiki-cli.ts
 │   └── pr-bot-cli.ts
 ├── vscode-extension/       # VS Code extension
 ├── wiki/standards/         # Corporate standards
-└── tests/                  # Test suite
+└── tests/                  # Test suite (259+ tests)
 ```
 
 ## Integrations
@@ -92,6 +105,13 @@ pipeline-assistant-mcp/
 
 Install from `vscode-extension/` directory. Provides real-time analysis, quick fixes, and 35+ intelligent snippets.
 
+```bash
+cd vscode-extension
+npm install
+npm run compile
+# Press F5 to launch in development mode
+```
+
 ### GitHub Actions
 
 Add `.github/workflows/pipeline-review.yml` to automatically analyze PRs.
@@ -107,13 +127,33 @@ export AZDO_PROJECT="your-project"
 
 See [Usage Guide](docs/USAGE.md) for detailed configuration.
 
+## Security Features
+
+- **Webhook Signature Validation** - HMAC-SHA256 with timing-safe comparison
+- **Secret Masking** - Automatic redaction of tokens, passwords, API keys in logs
+- **Rate Limiting** - Sliding window algorithm to prevent abuse
+- **Input Validation** - Zod schemas for all user inputs
+
 ## Development
 
 ```bash
 npm run dev          # Watch mode
-npm test             # Run tests
+npm test             # Run tests (259+ tests)
 npm run lint         # Check code style
 npm run build        # Build project
+```
+
+## Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test
+npx vitest run tests/utils/logger.test.ts
+
+# Run with coverage
+npx vitest run --coverage
 ```
 
 ## Contributing

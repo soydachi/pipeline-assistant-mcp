@@ -10,7 +10,9 @@ Complete guide for setting up and using Pipeline Assistant MCP across all platfo
 - [GitHub Integration](#github-integration)
 - [Azure DevOps Integration](#azure-devops-integration)
 - [Configuration](#configuration)
+- [Security Features](#security-features)
 - [Examples](#examples)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -86,6 +88,9 @@ node dist/cli/pr-bot-cli.js analyze \
 ### Claude Desktop Configuration
 
 Add to your Claude Desktop config (`claude_desktop_config.json`):
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
@@ -268,9 +273,69 @@ node dist/cli/azure-devops-cli.js analyze-pr \
 
 ### Webhook Setup
 
-1. Go to Project Settings → Service Hooks
+1. Go to Project Settings > Service Hooks
 2. Create subscription for "Pull request created/updated"
 3. Configure webhook URL to your server
+4. Set webhook secret for signature validation
+
+#### Webhook Handler Configuration
+
+```typescript
+const handler = new WebhookHandler(bot, config, {
+  validateSignature: true,
+  webhookSecret: process.env.WEBHOOK_SECRET,
+  autoAnalyze: true,
+  rateLimitEnabled: true,
+  rateLimitPerMinute: 30
+});
+```
+
+---
+
+## Security Features
+
+### Webhook Signature Validation
+
+All incoming webhooks can be validated using HMAC-SHA256:
+
+```typescript
+// Signature format: sha256=<hash>
+const isValid = handler.validateWebhookSignature(payload, signature);
+```
+
+### Secret Masking in Logs
+
+Sensitive data is automatically redacted:
+- Passwords, tokens, API keys
+- Bearer tokens
+- Basic auth credentials
+- JWT tokens
+- URLs with embedded credentials
+
+### Rate Limiting
+
+Built-in rate limiting for webhooks and API endpoints:
+
+```typescript
+import { createWebhookRateLimiter, createRateLimitHeaders } from './utils/rate-limiter';
+
+const limiter = createWebhookRateLimiter({ maxRequests: 30 });
+const result = limiter.checkLimit(clientId);
+
+if (!result.allowed) {
+  return res.status(429).json({ error: 'Rate limit exceeded' });
+}
+```
+
+### Input Validation
+
+All inputs are validated using Zod schemas:
+
+```typescript
+import { validateAnalyzeInput, validateGenerateInput } from './utils/validation';
+
+const input = validateAnalyzeInput(userInput);
+```
 
 ---
 
@@ -379,14 +444,22 @@ npm test -- --verbose
 - Check path in Claude config is absolute
 - Verify Node.js is in PATH
 - Check Output panel in VS Code
+- Ensure project is built (`npm run build`)
 
 **Azure DevOps authentication fails**
 - Verify PAT has required permissions
 - Check organization URL format
 - Ensure PAT is not expired
+- Test with: `curl -u :$AZDO_PAT "$AZDO_ORG_URL/_apis/projects?api-version=7.0"`
+
+**Rate limiting issues**
+- Check if your client ID is consistent
+- Verify rate limit configuration
+- Reset rate limit if needed: `handler.resetRateLimit(clientId)`
 
 ### Getting Help
 
 - [GitHub Issues](https://github.com/soydachi/pipeline-assistant-mcp/issues)
 - Check existing tests for usage examples
 - Review `examples/` directory
+- See [Workshop Guide](../TALLER.md) for step-by-step tutorial

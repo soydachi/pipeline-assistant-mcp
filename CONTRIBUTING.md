@@ -49,38 +49,92 @@ npm test
 ### Project Structure
 
 ```
-src/                 # Core TypeScript source
-├── server.ts        # MCP server
-├── pipeline-*.ts    # Pipeline logic
-├── azure-devops/    # Azure DevOps integration
-cli/                 # CLI tools
-vscode-extension/    # VS Code extension
-tests/               # Test suite
-wiki/standards/      # Corporate standards
+src/                      # Core TypeScript source
+├── server.ts             # MCP server entry point
+├── pipeline-generator.ts # Pipeline generation logic
+├── pipeline-analyzer.ts  # Security and compliance analysis
+├── policy-enforcer.ts    # Policy enforcement engine
+├── wiki-manager.ts       # Wiki and standards management
+├── container.ts          # Dependency injection container
+├── azure-devops/         # Azure DevOps integration
+│   ├── client.ts         # API client with retry logic
+│   ├── pr-bot.ts         # PR analysis bot
+│   ├── config.ts         # Configuration management
+│   └── webhook-handler.ts# Webhook processing
+└── utils/                # Shared utilities
+    ├── logger.ts         # Structured logging with secret masking
+    ├── validation.ts     # Zod schemas for input validation
+    ├── rate-limiter.ts   # Rate limiting utility
+    └── formatting.ts     # Output formatting
+
+cli/                      # CLI tools
+├── pipeline-assistant.ts # Main CLI (generate/analyze/suggest)
+├── wiki-cli.ts           # Wiki management
+└── pr-bot-cli.ts         # PR analysis
+
+vscode-extension/         # VS Code extension
+├── src/
+│   ├── extension.ts      # Extension entry point
+│   └── providers/        # 6 specialized providers
+
+tests/                    # Test suite (Vitest)
+├── *.test.ts             # Unit tests
+├── azure-devops/         # Azure DevOps tests
+└── utils/                # Utility tests
+
+wiki/standards/           # Corporate standards
+├── pipeline-standards.md # Standards definitions
+├── security-policies.yaml# Security policies
+└── templates/            # Pipeline templates
 ```
 
 ## Code Standards
 
 ### TypeScript
 
-- Use strict mode
+- Use strict mode (enabled in tsconfig.json)
 - Avoid `any` type - use proper interfaces
 - Document public functions with JSDoc
-- Handle errors explicitly
+- Handle errors explicitly with proper types
+- Use Zod for runtime validation
 
 ### Security
 
 - Never hardcode secrets
-- Validate all inputs
+- Validate all inputs with Zod schemas
 - Use parameterized queries
 - Redact sensitive data in logs
+- Implement rate limiting for public endpoints
+- Use timing-safe comparisons for secrets
 
 ### Testing
 
-- Write tests for new features
-- Maintain existing test coverage
+- Write tests for new features (Vitest)
+- Maintain existing test coverage (~55%+)
 - Use descriptive test names
 - Mock external dependencies
+- Test edge cases and error conditions
+
+### Logging
+
+Use the structured logger from `src/utils/logger.ts`:
+
+```typescript
+import { logger } from './utils/logger';
+
+logger.info('Operation completed', { userId: 123, duration: 45 });
+logger.error('Operation failed', { error: err.message });
+```
+
+### Dependency Injection
+
+Use the DI container for service instantiation:
+
+```typescript
+import { container } from './container';
+
+const analyzer = container.resolve('pipelineAnalyzer');
+```
 
 ### Quality Checks
 
@@ -88,7 +142,7 @@ Before submitting:
 
 ```bash
 npm run lint        # Check code style
-npm test            # Run tests
+npm test            # Run tests (259+ tests)
 npm run build       # Verify compilation
 ```
 
@@ -100,20 +154,71 @@ npm run build       # Verify compilation
 - Additional pipeline templates
 - New violation detection rules
 - Test coverage improvements
+- Bug fixes with clear reproduction steps
+
+### Intermediate
+
+- New Azure service integrations
+- VS Code extension enhancements
+- CLI improvements
+- Performance optimizations
 
 ### Advanced
 
 - GitLab integration
 - Terraform/IaC support
 - Web dashboard
-- Performance optimizations
+- Custom rule engine
+- Plugin system
 
 ## Review Process
 
-1. Automated checks must pass
+1. Automated checks must pass (lint, tests, build)
 2. At least one maintainer review
 3. Changes may require updates based on feedback
-4. Merged after approval
+4. Security-sensitive changes require additional review
+5. Merged after approval
+
+## Testing Guidelines
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test file
+npx vitest run tests/utils/logger.test.ts
+
+# Run with coverage
+npx vitest run --coverage
+
+# Watch mode
+npx vitest watch
+```
+
+### Writing Tests
+
+```typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+describe('MyFeature', () => {
+  beforeEach(() => {
+    // Setup
+  });
+
+  it('should do something specific', () => {
+    // Arrange
+    const input = { /* ... */ };
+
+    // Act
+    const result = myFunction(input);
+
+    // Assert
+    expect(result).toBe(expected);
+  });
+});
+```
 
 ## Questions?
 
