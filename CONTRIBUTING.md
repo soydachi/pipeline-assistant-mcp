@@ -91,12 +91,19 @@ tests/                    # Test suite (Vitest)
 ├── azure-devops/         # Azure DevOps tests
 └── utils/                # Utility tests
 
-wiki/standards/           # Corporate standards
-├── pipeline-standards.md # Standards definitions
-├── security-policies.yaml# Security policies
-└── platforms/            # Platform-specific templates
-    ├── azure/templates/  # Azure DevOps templates
-    └── github/templates/ # GitHub Actions templates
+wiki/standards/           # Corporate standards v2.0
+├── core/                 # Stage definitions
+│   └── stages.yaml       # Mandatory 6-stage structure
+├── security/             # Security policies
+│   ├── policies.yaml     # SEC-001 to SEC-010
+│   └── sla.yaml          # Remediation SLAs
+├── quality/              # Quality standards
+│   └── gates.yaml        # Quality gate thresholds
+├── platforms/            # Platform-specific templates
+│   ├── azure/templates/  # Azure DevOps templates
+│   └── github/templates/ # GitHub Actions templates
+├── migration/            # Migration guides
+└── governance/           # Governance documentation
 ```
 
 ## Code Standards

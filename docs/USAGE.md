@@ -1,6 +1,24 @@
 # Usage Guide
 
-Complete guide for setting up and using Pipeline Assistant MCP across all platforms.
+Complete reference for setting up and using Pipeline Assistant MCP across all platforms.
+
+## Quick Architecture Reference
+
+```mermaid
+graph LR
+    CLI[CLI Tools] --> MCP[MCP Server]
+    VSC[VS Code] --> MCP
+    CD[Claude Desktop] --> MCP
+
+    MCP --> GEN[Generator]
+    MCP --> ANA[Analyzer]
+
+    GEN --> WIKI[(Wiki v2.0)]
+    ANA --> WIKI
+
+    style MCP fill:#e3f2fd
+    style WIKI fill:#f3e5f5
+```
 
 ## Table of Contents
 
@@ -377,12 +395,35 @@ Create `config.json`:
 }
 ```
 
-### Corporate Standards
+### Corporate Standards (v2.0)
 
-Edit `wiki/standards/pipeline-standards.md` to define:
-- Mandatory rules (must implement)
-- Recommended rules (should implement)
-- Forbidden practices (must not use)
+Standards are organized in a structured directory:
+
+```
+wiki/standards/
+├── core/                    # Stage definitions
+│   ├── stages.yaml          # Mandatory 6-stage structure
+│   ├── naming-conventions.yaml
+│   └── environments.yaml
+├── security/                # Security policies
+│   ├── policies.yaml        # SEC-001 to SEC-010
+│   ├── sla.yaml             # Remediation SLAs
+│   └── compliance-mapping.yaml
+├── quality/                 # Quality standards
+│   ├── testing.yaml
+│   ├── coverage.yaml
+│   └── gates.yaml           # Quality gate thresholds
+├── platforms/               # Platform templates
+│   ├── azure/templates/     # Azure DevOps templates
+│   └── github/templates/    # GitHub Actions templates
+├── migration/               # Migration guides
+└── governance/              # Governance documentation
+```
+
+Key configuration files:
+- `security/policies.yaml` - Security policy definitions (SEC-001 to SEC-010)
+- `core/stages.yaml` - Mandatory pipeline stages
+- `quality/gates.yaml` - Quality gate thresholds per environment
 
 ---
 
@@ -475,4 +516,4 @@ npm test -- --verbose
 - [GitHub Issues](https://github.com/soydachi/pipeline-assistant-mcp/issues)
 - Check existing tests for usage examples
 - Review `examples/` directory
-- See [Workshop Guide](../TALLER.md) for step-by-step tutorial
+- See [Workshop Guide](WORKSHOP.md) for step-by-step tutorial
