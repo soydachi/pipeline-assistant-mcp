@@ -1,0 +1,70 @@
+# BAD PIPELINE - Contains multiple security and compliance issues
+# Use this to test Pipeline Assistant analysis
+
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# ISSUE: Hardcoded secrets in variables
+variables:
+  DB_CONNECTION: 'Server=prod-db.azure.com;Database=mydb;User=admin;Password=SuperSecret123!'
+  API_KEY: 'sk-1234567890abcdef1234567890abcdef'
+  DEPLOY_TOKEN: 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+stages:
+  # ISSUE: Missing security scanning stage
+  - stage: Build
+    jobs:
+      - job: BuildJob
+        steps:
+          # ISSUE: No version pinning on actions
+          - task: UseDotNet@2
+            inputs:
+              packageType: 'sdk'
+              version: '8.x'
+
+          - script: dotnet restore src/DemoApi.csproj
+            displayName: 'Restore'
+
+          - script: dotnet build src/DemoApi.csproj --configuration Release
+            displayName: 'Build'
+
+  - stage: Test
+    dependsOn: Build
+    jobs:
+      - job: TestJob
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: 'sdk'
+              version: '8.x'
+
+          # ISSUE: No code coverage collection
+          - script: dotnet test tests/DemoApi.Tests.csproj
+            displayName: 'Run Tests'
+
+  # ISSUE: Direct deployment to production without approval gates
+  - stage: Deploy
+    dependsOn: Test
+    jobs:
+      - job: DeployJob
+        steps:
+          - script: |
+              echo "Deploying to production..."
+              # ISSUE: Using hardcoded credentials in script
+              curl -X POST https://api.azure.com/deploy \
+                -H "Authorization: Bearer $(DEPLOY_TOKEN)" \
+                -d '{"env": "production"}'
+            displayName: 'Deploy to Production'
+
+# ISSUES SUMMARY:
+# - SEC-001: Hardcoded secrets in variables (DB_CONNECTION, API_KEY, DEPLOY_TOKEN)
+# - SEC-002: No SAST analysis stage
+# - SEC-003: No dependency scanning
+# - SEC-010: No SBOM generation
+# - POL-001: Missing security stage
+# - POL-002: No approval gates for production deployment
+# - QUAL-001: No code coverage reporting
+# - PERF-001: No caching configured
