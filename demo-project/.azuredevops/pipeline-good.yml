@@ -104,7 +104,7 @@ stages:
           - task: Cache@2
             displayName: 'Cache NuGet Packages'
             inputs:
-              key: 'nuget | "$(Agent.OS)" | **/packages.lock.json'
+              key: 'nuget | "$(Agent.OS)" | **/*.csproj'
               restoreKeys: |
                 nuget | "$(Agent.OS)"
               path: $(NUGET_PACKAGES)
