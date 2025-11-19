@@ -906,20 +906,97 @@ Set up automated PR analysis in Azure DevOps.
 
 ### Step 2: Configure Environment
 
+You have two options for configuring credentials:
+
+#### Option A: Local Development (Environment Variables)
+
 ```bash
 export AZDO_ORG_URL="https://dev.azure.com/your-org"
 export AZDO_PAT="your-personal-access-token"
 export AZDO_PROJECT="YourProject"
 ```
 
+#### Option B: Azure DevOps Pipeline (Variable Groups) - Recommended for CI/CD
+
+This is the **secure and recommended approach** for running in Azure DevOps pipelines.
+
+**Step 2.1: Create Variable Group**
+
+1. Go to Azure DevOps > Pipelines > Library
+2. Click "+ Variable group"
+3. Name: `pipeline-assistant-config`
+4. Add variables:
+
+| Variable | Value | Secret |
+|----------|-------|--------|
+| `AZDO_ORG_URL` | `https://dev.azure.com/your-org` | No |
+| `AZDO_PAT` | `your-pat-token` | **Yes** (click lock icon) |
+| `AZDO_PROJECT` | `YourProject` | No |
+| `AZDO_ENFORCEMENT_MODE` | `learning` or `enforcement` | No |
+| `AZDO_STRICT_MODE` | `false` | No |
+
+5. Click "Save"
+
+**Step 2.2: (Optional) Link to Azure Key Vault**
+
+For enhanced security, link your Variable Group to Azure Key Vault:
+
+1. Toggle "Link secrets from an Azure key vault"
+2. Select your Azure subscription and Key Vault
+3. Add secrets: `AZDO-PAT`
+4. The PAT will be fetched securely at runtime
+
+**Step 2.3: Create the Pipeline**
+
+Use the pre-configured pipeline in `.azuredevops/pipelines/pr-analysis.yml`:
+
+```yaml
+# Key sections of the pipeline:
+
+# Link Variable Group
+variables:
+  - group: pipeline-assistant-config
+
+# Map secrets to environment variables (required for secret variables)
+env:
+  AZDO_ORG_URL: $(AZDO_ORG_URL)
+  AZDO_PAT: $(AZDO_PAT)
+  AZDO_PROJECT: $(AZDO_PROJECT)
+```
+
+**Step 2.4: Import Pipeline in Azure DevOps**
+
+1. Go to Pipelines > New Pipeline
+2. Select "Azure Repos Git"
+3. Select your repository
+4. Choose "Existing Azure Pipelines YAML file"
+5. Path: `/.azuredevops/pipelines/pr-analysis.yml`
+6. Click "Run"
+
+**How it works:**
+
+```mermaid
+graph LR
+    VG[Variable Group<br/>pipeline-assistant-config] --> P[Pipeline YAML]
+    KV[Azure Key Vault<br/>Optional] --> VG
+    P --> ENV[Environment Variables<br/>process.env.*]
+    ENV --> CLI[pr-bot-cli.js]
+    CLI --> API[Azure DevOps API]
+```
+
+The same `pr-bot-cli.js` script works in both scenarios because it reads from `process.env`, and Azure DevOps automatically injects Variable Group values as environment variables.
+
 ### Step 3: Test Connection
 
+**For local development:**
 ```bash
 curl -u ":$AZDO_PAT" \
   "$AZDO_ORG_URL/_apis/projects?api-version=7.0"
 ```
 
-### Step 4: Simulate PR Analysis
+**For Azure DevOps pipeline:** The connection is tested automatically when the pipeline runs.
+
+### Step 4: Simulate PR Analysis (Local)
 
 ```bash
 # Simulate a bad pipeline PR
@@ -929,11 +1006,22 @@ node dist/cli/pr-bot-cli.js simulate --scenario bad
 node dist/cli/pr-bot-cli.js simulate --scenario good
 ```
 
+### Step 5: Run in Azure DevOps Pipeline
+
+Once configured, the pipeline will:
+
+1. **Trigger on PRs** that modify `.yml` or `.yaml` files
+2. **Analyze changed pipelines** for security and compliance
+3. **Post comments** on the PR with the analysis results
+4. **Block the PR** (if `AZDO_ENFORCEMENT_MODE=enforcement`) when critical issues are found
+
 ### Checkpoint 6
 
 **What we learned:**
-- Azure DevOps authentication
-- PR analysis from CLI
+- Azure DevOps authentication (PAT creation)
+- Two configuration methods: local env vars vs Variable Groups
+- Secure credential management with Variable Groups and Key Vault
+- PR analysis pipeline setup
 - Enforcement modes (learning vs enforcement)
 
 ---

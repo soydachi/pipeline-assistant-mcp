@@ -1,0 +1,125 @@
+# Pipeline Assistant - PR Analysis Pipeline
+# This pipeline analyzes pull requests for security and compliance issues
+# Uses Variable Groups for secure credential management
+
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - '**/*.yml'
+      - '**/*.yaml'
+
+# Link Variable Group from Azure Library
+variables:
+  - group: pipeline-assistant-config
+  # Optional: Override or add additional variables
+  # - name: AZDO_ENFORCEMENT_MODE
+  #   value: 'enforcement'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: Analyze
+    displayName: 'Pipeline Analysis'
+    jobs:
+      - job: AnalyzePipelines
+        displayName: 'Analyze Pipeline Files'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: '20.x'
+
+          - script: |
+              git clone https://github.com/soydachi/pipeline-assistant-mcp.git $(Agent.TempDirectory)/pipeline-assistant
+              cd $(Agent.TempDirectory)/pipeline-assistant
+              npm ci
+              npm run build
+            displayName: 'Setup Pipeline Assistant'
+
+          - script: |
+              echo "Analyzing pipeline files in PR..."
+
+              # Find all YAML files changed in the PR
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD -- '*.yml' '*.yaml' 2>/dev/null || echo "")
+
+              if [ -z "$CHANGED_FILES" ]; then
+                echo "No YAML files changed in this PR"
+                exit 0
+              fi
+
+              ANALYSIS_FAILED=0
+
+              for file in $CHANGED_FILES; do
+                if [ -f "$file" ]; then
+                  echo ""
+                  echo "=========================================="
+                  echo "Analyzing: $file"
+                  echo "=========================================="
+
+                  node $(Agent.TempDirectory)/pipeline-assistant/dist/cli/pipeline-assistant.js analyze -f "$file" || ANALYSIS_FAILED=1
+                fi
+              done
+
+              if [ $ANALYSIS_FAILED -eq 1 ] && [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ]; then
+                echo "##vso[task.logissue type=error]Pipeline analysis found critical issues"
+                exit 1
+              fi
+            displayName: 'Analyze Changed Pipelines'
+            env:
+              # Map Variable Group secrets to environment variables
+              # This is required for secret variables
+              AZDO_ORG_URL: $(AZDO_ORG_URL)
+              AZDO_PAT: $(AZDO_PAT)
+              AZDO_PROJECT: $(AZDO_PROJECT)
+              AZDO_ENFORCEMENT_MODE: $(AZDO_ENFORCEMENT_MODE)
+              AZDO_STRICT_MODE: $(AZDO_STRICT_MODE)
+
+      - job: PRComment
+        displayName: 'Post Analysis to PR'
+        dependsOn: AnalyzePipelines
+        condition: always()
+        steps:
+          - checkout: self
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: '20.x'
+
+          - script: |
+              git clone https://github.com/soydachi/pipeline-assistant-mcp.git $(Agent.TempDirectory)/pipeline-assistant
+              cd $(Agent.TempDirectory)/pipeline-assistant
+              npm ci
+              npm run build
+            displayName: 'Setup Pipeline Assistant'
+
+          - script: |
+              echo "Posting analysis results to PR..."
+
+              # Get PR ID from system variables
+              PR_ID=$(System.PullRequest.PullRequestId)
+
+              if [ -n "$PR_ID" ]; then
+                node $(Agent.TempDirectory)/pipeline-assistant/dist/cli/pr-bot-cli.js analyze \
+                  --pr-id "$PR_ID" \
+                  --post-comment
+              else
+                echo "Not running in PR context, skipping comment"
+              fi
+            displayName: 'Post PR Comment'
+            env:
+              AZDO_ORG_URL: $(AZDO_ORG_URL)
+              AZDO_PAT: $(AZDO_PAT)
+              AZDO_PROJECT: $(AZDO_PROJECT)
+              AZDO_REPOSITORY: $(Build.Repository.Name)
+            condition: and(succeeded(), ne(variables['System.PullRequest.PullRequestId'], ''))
