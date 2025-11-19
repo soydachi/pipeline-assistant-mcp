@@ -41,11 +41,17 @@ stages:
             inputs:
               versionSpec: '20.x'
 
+          # Clone pipeline-assistant from public GitHub repo
           - script: |
-              git clone https://github.com/soydachi/pipeline-assistant-mcp.git $(Agent.TempDirectory)/pipeline-assistant
+              set -e
+              echo "Cloning pipeline-assistant-mcp from GitHub..."
+              git clone --depth 1 https://github.com/soydachi/pipeline-assistant-mcp.git $(Agent.TempDirectory)/pipeline-assistant
               cd $(Agent.TempDirectory)/pipeline-assistant
+              echo "Installing dependencies..."
               npm ci
+              echo "Building..."
               npm run build
+              echo "Pipeline Assistant setup complete"
             displayName: 'Setup Pipeline Assistant'
 
           - script: |
@@ -99,11 +105,17 @@ stages:
             inputs:
               versionSpec: '20.x'
 
+          # Clone pipeline-assistant from public GitHub repo
           - script: |
-              git clone https://github.com/soydachi/pipeline-assistant-mcp.git $(Agent.TempDirectory)/pipeline-assistant
+              set -e
+              echo "Cloning pipeline-assistant-mcp from GitHub..."
+              git clone --depth 1 https://github.com/soydachi/pipeline-assistant-mcp.git $(Agent.TempDirectory)/pipeline-assistant
               cd $(Agent.TempDirectory)/pipeline-assistant
+              echo "Installing dependencies..."
               npm ci
+              echo "Building..."
               npm run build
+              echo "Pipeline Assistant setup complete"
             displayName: 'Setup Pipeline Assistant'
 
           - script: |
