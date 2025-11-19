@@ -15,9 +15,11 @@ pr:
       - '**/*.yaml'
 
 # Link Variable Group from Azure Library
+# Only AZDO_PAT is required in the Variable Group
+# AZDO_ORG_URL and AZDO_PROJECT are auto-detected from pipeline context
 variables:
   - group: pipeline-assistant-config
-  # Optional: Override or add additional variables
+  # Optional: Override enforcement mode
   # - name: AZDO_ENFORCEMENT_MODE
   #   value: 'enforcement'
 
@@ -76,11 +78,12 @@ stages:
               fi
             displayName: 'Analyze Changed Pipelines'
             env:
-              # Map Variable Group secrets to environment variables
-              # This is required for secret variables
-              AZDO_ORG_URL: $(AZDO_ORG_URL)
+              # Use Azure DevOps predefined variables for org/project
+              # Only PAT needs to come from Variable Group (secret)
+              AZDO_ORG_URL: $(System.CollectionUri)
               AZDO_PAT: $(AZDO_PAT)
-              AZDO_PROJECT: $(AZDO_PROJECT)
+              AZDO_PROJECT: $(System.TeamProject)
+              AZDO_REPOSITORY: $(Build.Repository.Name)
               AZDO_ENFORCEMENT_MODE: $(AZDO_ENFORCEMENT_MODE)
               AZDO_STRICT_MODE: $(AZDO_STRICT_MODE)
 
@@ -118,8 +121,9 @@ stages:
               fi
             displayName: 'Post PR Comment'
             env:
-              AZDO_ORG_URL: $(AZDO_ORG_URL)
+              # Use Azure DevOps predefined variables for org/project
+              AZDO_ORG_URL: $(System.CollectionUri)
               AZDO_PAT: $(AZDO_PAT)
-              AZDO_PROJECT: $(AZDO_PROJECT)
+              AZDO_PROJECT: $(System.TeamProject)
               AZDO_REPOSITORY: $(Build.Repository.Name)
             condition: and(succeeded(), ne(variables['System.PullRequest.PullRequestId'], ''))

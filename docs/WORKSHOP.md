@@ -927,13 +927,13 @@ This is the **secure and recommended approach** for running in Azure DevOps pipe
 3. Name: `pipeline-assistant-config`
 4. Add variables:
 
-| Variable | Value | Secret |
-|----------|-------|--------|
-| `AZDO_ORG_URL` | `https://dev.azure.com/your-org` | No |
-| `AZDO_PAT` | `your-pat-token` | **Yes** (click lock icon) |
-| `AZDO_PROJECT` | `YourProject` | No |
-| `AZDO_ENFORCEMENT_MODE` | `learning` or `enforcement` | No |
-| `AZDO_STRICT_MODE` | `false` | No |
+| Variable | Value | Secret | Required |
+|----------|-------|--------|----------|
+| `AZDO_PAT` | `your-pat-token` | **Yes** (click lock icon) | **Yes** |
+| `AZDO_ENFORCEMENT_MODE` | `learning` or `enforcement` | No | No |
+| `AZDO_STRICT_MODE` | `false` | No | No |
+
+> **Note:** `AZDO_ORG_URL` and `AZDO_PROJECT` are **not needed** in the Variable Group. The pipeline automatically detects them from Azure DevOps predefined variables (`System.CollectionUri` and `System.TeamProject`). This makes the pipeline work for **any project** without configuration changes.
 
 5. Click "Save"
 
@@ -953,15 +953,16 @@ Use the pre-configured pipeline in `.azuredevops/pipelines/pr-analysis.yml`:
 ```yaml
 # Key sections of the pipeline:
 
-# Link Variable Group
+# Link Variable Group (only PAT is stored here)
 variables:
   - group: pipeline-assistant-config
 
-# Map secrets to environment variables (required for secret variables)
+# Environment variables use Azure DevOps predefined vars
 env:
-  AZDO_ORG_URL: $(AZDO_ORG_URL)
-  AZDO_PAT: $(AZDO_PAT)
-  AZDO_PROJECT: $(AZDO_PROJECT)
+  AZDO_ORG_URL: $(System.CollectionUri)    # Auto-detected
+  AZDO_PAT: $(AZDO_PAT)                    # From Variable Group
+  AZDO_PROJECT: $(System.TeamProject)      # Auto-detected
+  AZDO_REPOSITORY: $(Build.Repository.Name) # Auto-detected
 ```
 
 **Step 2.4: Import Pipeline in Azure DevOps**
