@@ -70,6 +70,10 @@ stages:
               arguments: 'install --global security-scan'
             continueOnError: true
 
+          # Restore dependencies (required for dependency scanning)
+          - script: dotnet restore src/DemoApi.csproj
+            displayName: 'Restore Dependencies for Security Scan'
+
           # SEC-003: Dependency Scanning
           - script: |
               dotnet list src/DemoApi.csproj package --vulnerable --include-transitive
