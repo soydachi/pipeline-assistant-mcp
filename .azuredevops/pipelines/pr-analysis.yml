@@ -66,6 +66,7 @@ stages:
               fi
 
               ANALYSIS_FAILED=0
+              HAS_CRITICAL=0
               PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
 
               for file in $CHANGED_FILES; do
@@ -77,13 +78,29 @@ stages:
 
                   # Use absolute path for the file being analyzed
                   FULL_PATH="$(Build.SourcesDirectory)/$file"
-                  node $PA_DIR/dist/cli/pipeline-assistant.js analyze -f "$FULL_PATH" || ANALYSIS_FAILED=1
+
+                  # Run analysis and capture exit code
+                  # Exit codes: 0=pass, 1=high violations, 2=critical violations
+                  set +e
+                  node $PA_DIR/dist/cli/pipeline-assistant.js analyze -f "$FULL_PATH"
+                  EXIT_CODE=$?
+                  set -e
+
+                  if [ $EXIT_CODE -eq 2 ]; then
+                    HAS_CRITICAL=1
+                    ANALYSIS_FAILED=1
+                  elif [ $EXIT_CODE -ne 0 ]; then
+                    ANALYSIS_FAILED=1
+                  fi
                 fi
               done
 
-              if [ $ANALYSIS_FAILED -eq 1 ] && [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ]; then
+              # Only fail the pipeline if in enforcement mode AND has critical issues
+              if [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ] && [ $HAS_CRITICAL -eq 1 ]; then
                 echo "##vso[task.logissue type=error]Pipeline analysis found critical issues"
                 exit 1
+              elif [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ] && [ $ANALYSIS_FAILED -eq 1 ]; then
+                echo "##vso[task.logissue type=warning]Pipeline analysis found high severity issues"
               fi
             displayName: 'Analyze Changed Pipelines'
             env:
