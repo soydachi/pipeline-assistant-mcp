@@ -66,6 +66,7 @@ stages:
               fi
 
               ANALYSIS_FAILED=0
+              PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
 
               for file in $CHANGED_FILES; do
                 if [ -f "$file" ]; then
@@ -74,7 +75,9 @@ stages:
                   echo "Analyzing: $file"
                   echo "=========================================="
 
-                  node $(Agent.TempDirectory)/pipeline-assistant/dist/cli/pipeline-assistant.js analyze -f "$file" || ANALYSIS_FAILED=1
+                  # Use absolute path for the file being analyzed
+                  FULL_PATH="$(Build.SourcesDirectory)/$file"
+                  node $PA_DIR/dist/cli/pipeline-assistant.js analyze -f "$FULL_PATH" || ANALYSIS_FAILED=1
                 fi
               done
 
@@ -92,6 +95,8 @@ stages:
               AZDO_REPOSITORY: $(Build.Repository.Name)
               AZDO_ENFORCEMENT_MODE: $(AZDO_ENFORCEMENT_MODE)
               AZDO_STRICT_MODE: $(AZDO_STRICT_MODE)
+              # Set wiki path to pipeline-assistant's wiki directory
+              WIKI_PATH: $(Agent.TempDirectory)/pipeline-assistant/wiki/standards
 
       - job: PRComment
         displayName: 'Post Analysis to PR'
