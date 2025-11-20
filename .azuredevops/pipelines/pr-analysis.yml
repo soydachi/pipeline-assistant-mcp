@@ -98,7 +98,59 @@ stages:
               # Set wiki path to pipeline-assistant's wiki directory
               WIKI_PATH: $(Agent.TempDirectory)/pipeline-assistant/wiki/standards
 
-      # TODO: Implement Azure DevOps PR comment posting
-      # The current pr-bot-cli.js is designed for GitHub, not Azure DevOps
-      # For now, analysis results are shown in the pipeline logs
-      # Future: Use Azure DevOps REST API to post PR comments
+      - job: PostPRComment
+        displayName: 'Post PR Comment'
+        dependsOn: AnalyzePipelines
+        condition: |
+          and(
+            always(),
+            ne(variables['System.PullRequest.PullRequestId'], ''),
+            ne(variables['AZDO_PAT'], '')
+          )
+        steps:
+          - checkout: self
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: '20.x'
+
+          # Clone pipeline-assistant from public GitHub repo
+          - script: |
+              set -e
+              echo "Cloning pipeline-assistant-mcp from GitHub..."
+              git clone --depth 1 https://github.com/soydachi/pipeline-assistant-mcp.git $(Agent.TempDirectory)/pipeline-assistant
+              cd $(Agent.TempDirectory)/pipeline-assistant
+              echo "Installing dependencies..."
+              npm ci
+              echo "Building..."
+              npm run build
+              echo "Pipeline Assistant setup complete"
+            displayName: 'Setup Pipeline Assistant'
+
+          - script: |
+              echo "Posting analysis summary to PR..."
+
+              PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
+              PR_ID=$(System.PullRequest.PullRequestId)
+
+              # Simple score based on job result (can be enhanced to pass actual score)
+              # For now, we'll use a placeholder score
+              SCORE=0
+
+              # Post comment to Azure DevOps PR
+              node $PA_DIR/dist/cli/pr-comment-cli.js azdo \
+                --pr-id "$PR_ID" \
+                --org-url "$AZDO_ORG_URL" \
+                --pat "$AZDO_PAT" \
+                --project "$AZDO_PROJECT" \
+                --repository "$AZDO_REPOSITORY" \
+                --score "$SCORE"
+
+              echo "Comment posted to PR #$PR_ID"
+            displayName: 'Post Analysis Comment'
+            env:
+              AZDO_ORG_URL: $(System.CollectionUri)
+              AZDO_PAT: $(AZDO_PAT)
+              AZDO_PROJECT: $(System.TeamProject)
+              AZDO_REPOSITORY: $(Build.Repository.Name)
