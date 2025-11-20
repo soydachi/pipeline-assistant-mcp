@@ -69,10 +69,11 @@ stages:
 
               if [ -z "$CHANGED_FILES" ]; then
                 echo "No YAML files changed in this PR"
-                # Set output variables for no files case
-                echo "##vso[task.setvariable variable=AnalysisScore;isOutput=true]100"
-                echo "##vso[task.setvariable variable=HasCritical;isOutput=true]0"
-                echo "##vso[task.setvariable variable=AnalysisFailed;isOutput=true]0"
+                # Save default results for no files case
+                mkdir -p $(Build.ArtifactStagingDirectory)/analysis
+                echo "100" > $(Build.ArtifactStagingDirectory)/analysis/score.txt
+                echo "0" > $(Build.ArtifactStagingDirectory)/analysis/has_critical.txt
+                echo "0" > $(Build.ArtifactStagingDirectory)/analysis/analysis_failed.txt
                 exit 0
               fi
 
@@ -90,10 +91,11 @@ stages:
 
               if [ -z "$CHANGED_FILES" ]; then
                 echo "No application pipeline files to analyze"
-                # Set output variables for no application files case
-                echo "##vso[task.setvariable variable=AnalysisScore;isOutput=true]100"
-                echo "##vso[task.setvariable variable=HasCritical;isOutput=true]0"
-                echo "##vso[task.setvariable variable=AnalysisFailed;isOutput=true]0"
+                # Save default results for no application files case
+                mkdir -p $(Build.ArtifactStagingDirectory)/analysis
+                echo "100" > $(Build.ArtifactStagingDirectory)/analysis/score.txt
+                echo "0" > $(Build.ArtifactStagingDirectory)/analysis/has_critical.txt
+                echo "0" > $(Build.ArtifactStagingDirectory)/analysis/analysis_failed.txt
                 exit 0
               fi
 
@@ -140,15 +142,16 @@ stages:
                 AVG_SCORE=100
               fi
 
-              # Set output variable for use in subsequent jobs
-              # These must be set BEFORE any exit to ensure they're available
-              echo "##vso[task.setvariable variable=AnalysisScore;isOutput=true]$AVG_SCORE"
-              echo "##vso[task.setvariable variable=HasCritical;isOutput=true]$HAS_CRITICAL"
-              echo "##vso[task.setvariable variable=AnalysisFailed;isOutput=true]$ANALYSIS_FAILED"
               echo ""
               echo "=========================================="
               echo "Analysis Summary: Average Score = $AVG_SCORE/100"
               echo "=========================================="
+
+              # Save results to file for next jobs
+              mkdir -p $(Build.ArtifactStagingDirectory)/analysis
+              echo "$AVG_SCORE" > $(Build.ArtifactStagingDirectory)/analysis/score.txt
+              echo "$HAS_CRITICAL" > $(Build.ArtifactStagingDirectory)/analysis/has_critical.txt
+              echo "$ANALYSIS_FAILED" > $(Build.ArtifactStagingDirectory)/analysis/analysis_failed.txt
 
               # Log issues but don't fail here - let the EnforcePolicy job handle the exit
               if [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ] && [ $HAS_CRITICAL -eq 1 ]; then
@@ -156,29 +159,31 @@ stages:
               elif [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ] && [ $ANALYSIS_FAILED -eq 1 ]; then
                 echo "##vso[task.logissue type=warning]Pipeline analysis found high severity issues"
               fi
-            name: AnalyzeStep
             displayName: 'Analyze Changed Pipelines'
-            env:
-              # Use Azure DevOps predefined variables for org/project
-              # Only PAT needs to come from Variable Group (secret)
-              AZDO_ORG_URL: $(System.CollectionUri)
-              AZDO_PAT: $(AZDO_PAT)
-              AZDO_PROJECT: $(System.TeamProject)
-              AZDO_REPOSITORY: $(Build.Repository.Name)
-              AZDO_ENFORCEMENT_MODE: $(AZDO_ENFORCEMENT_MODE)
-              AZDO_STRICT_MODE: $(AZDO_STRICT_MODE)
-              # Set wiki path to pipeline-assistant's wiki directory
-              WIKI_PATH: $(Agent.TempDirectory)/pipeline-assistant/wiki/standards
+
+          # Publish analysis results as pipeline artifact
+          # Always run this even if previous step exits early
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Analysis Results'
+            condition: always()
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/analysis'
+              artifact: 'analysis-results'
+              publishLocation: 'pipeline'
 
       - job: PostPRComment
         displayName: 'Post PR Comment'
         dependsOn: AnalyzePipelines
         # Run only when in PR context (System.PullRequest.PullRequestId is set)
         condition: and(always(), ne(variables['System.PullRequest.PullRequestId'], ''))
-        variables:
-          AnalysisScore: $[ dependencies.AnalyzePipelines.outputs['AnalyzeStep.AnalysisScore'] ]
         steps:
-          - checkout: self
+          # Download analysis results from previous job
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download Analysis Results'
+            inputs:
+              artifact: 'analysis-results'
+              path: '$(Pipeline.Workspace)/analysis'
+            continueOnError: true
 
           - task: NodeTool@0
             displayName: 'Install Node.js'
@@ -204,10 +209,13 @@ stages:
               PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
               PR_ID=$(System.PullRequest.PullRequestId)
 
-              # Use actual score from analysis job
-              SCORE=$(AnalysisScore)
-              if [ -z "$SCORE" ] || [ "$SCORE" = "" ]; then
-                SCORE=100  # Default if no files were analyzed
+              # Read score from artifact file
+              if [ -f "$(Pipeline.Workspace)/analysis/score.txt" ]; then
+                SCORE=$(cat $(Pipeline.Workspace)/analysis/score.txt)
+                echo "Loaded score from artifact: $SCORE"
+              else
+                SCORE=100
+                echo "No score file found, using default: $SCORE"
               fi
 
               echo "Analysis Score: $SCORE/100"
@@ -236,15 +244,30 @@ stages:
           - AnalyzePipelines
           - PostPRComment
         condition: always()
-        variables:
-          HasCritical: $[ dependencies.AnalyzePipelines.outputs['AnalyzeStep.HasCritical'] ]
         steps:
+          # Download analysis results
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download Analysis Results'
+            inputs:
+              artifact: 'analysis-results'
+              path: '$(Pipeline.Workspace)/analysis'
+            continueOnError: true
+
           - script: |
               echo "Checking policy enforcement..."
-              echo "HasCritical: $(HasCritical)"
+
+              # Read has_critical from artifact file
+              if [ -f "$(Pipeline.Workspace)/analysis/has_critical.txt" ]; then
+                HAS_CRITICAL=$(cat $(Pipeline.Workspace)/analysis/has_critical.txt)
+                echo "HasCritical: $HAS_CRITICAL"
+              else
+                HAS_CRITICAL=0
+                echo "No has_critical file found, assuming no critical issues"
+              fi
+
               echo "Enforcement Mode: $AZDO_ENFORCEMENT_MODE"
 
-              if [ "$(HasCritical)" = "1" ] && [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ]; then
+              if [ "$HAS_CRITICAL" = "1" ] && [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ]; then
                 echo "##vso[task.logissue type=error]Pipeline analysis found critical issues - blocking PR"
                 exit 1
               fi
