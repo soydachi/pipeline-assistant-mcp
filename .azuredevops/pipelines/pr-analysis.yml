@@ -57,11 +57,22 @@ stages:
           - script: |
               echo "Analyzing pipeline files in PR..."
 
+              # Initialize variables first (must be set before any exit)
+              ANALYSIS_FAILED=0
+              HAS_CRITICAL=0
+              PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
+              TOTAL_SCORE=0
+              FILE_COUNT=0
+
               # Find all YAML files changed in the PR
               CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD -- '*.yml' '*.yaml' 2>/dev/null || echo "")
 
               if [ -z "$CHANGED_FILES" ]; then
                 echo "No YAML files changed in this PR"
+                # Set output variables for no files case
+                echo "##vso[task.setvariable variable=AnalysisScore;isOutput=true]100"
+                echo "##vso[task.setvariable variable=HasCritical;isOutput=true]0"
+                echo "##vso[task.setvariable variable=AnalysisFailed;isOutput=true]0"
                 exit 0
               fi
 
@@ -79,14 +90,12 @@ stages:
 
               if [ -z "$CHANGED_FILES" ]; then
                 echo "No application pipeline files to analyze"
+                # Set output variables for no application files case
+                echo "##vso[task.setvariable variable=AnalysisScore;isOutput=true]100"
+                echo "##vso[task.setvariable variable=HasCritical;isOutput=true]0"
+                echo "##vso[task.setvariable variable=AnalysisFailed;isOutput=true]0"
                 exit 0
               fi
-
-              ANALYSIS_FAILED=0
-              HAS_CRITICAL=0
-              PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
-              TOTAL_SCORE=0
-              FILE_COUNT=0
 
               for file in $CHANGED_FILES; do
                 if [ -f "$file" ]; then
