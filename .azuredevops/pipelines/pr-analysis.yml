@@ -117,8 +117,8 @@ stages:
                   # Print the output
                   echo "$OUTPUT"
 
-                  # Extract score from output (looks for "Score: XX/100")
-                  FILE_SCORE=$(echo "$OUTPUT" | grep -oE 'Score: [0-9]+' | grep -oE '[0-9]+' | head -1)
+                  # Extract score from output (looks for "Overall Score: XX/100" or "Score: XX/100")
+                  FILE_SCORE=$(echo "$OUTPUT" | grep -oE '(Overall )?Score: [0-9]+' | grep -oE '[0-9]+' | head -1)
                   if [ -n "$FILE_SCORE" ]; then
                     TOTAL_SCORE=$((TOTAL_SCORE + FILE_SCORE))
                     FILE_COUNT=$((FILE_COUNT + 1))
