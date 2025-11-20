@@ -141,7 +141,7 @@ stages:
               echo "Analysis Summary: Average Score = $AVG_SCORE/100"
               echo "=========================================="
 
-              # Log issues but don't fail here - let the next step handle the exit
+              # Log issues but don't fail here - let the EnforcePolicy job handle the exit
               if [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ] && [ $HAS_CRITICAL -eq 1 ]; then
                 echo "##vso[task.logissue type=error]Pipeline analysis found critical issues"
               elif [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ] && [ $ANALYSIS_FAILED -eq 1 ]; then
@@ -160,17 +160,6 @@ stages:
               AZDO_STRICT_MODE: $(AZDO_STRICT_MODE)
               # Set wiki path to pipeline-assistant's wiki directory
               WIKI_PATH: $(Agent.TempDirectory)/pipeline-assistant/wiki/standards
-
-          # Separate step to fail the pipeline after variables are set
-          - script: |
-              if [ "$(AnalyzeStep.HasCritical)" = "1" ] && [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ]; then
-                echo "Failing pipeline due to critical issues in enforcement mode"
-                exit 1
-              fi
-            displayName: 'Check Analysis Results'
-            condition: always()
-            env:
-              AZDO_ENFORCEMENT_MODE: $(AZDO_ENFORCEMENT_MODE)
 
       - job: PostPRComment
         displayName: 'Post PR Comment'
@@ -230,3 +219,28 @@ stages:
               AZDO_PAT: $(AZDO_PAT)
               AZDO_PROJECT: $(System.TeamProject)
               AZDO_REPOSITORY: $(Build.Repository.Name)
+
+      # Final job to enforce policy after comment is posted
+      - job: EnforcePolicy
+        displayName: 'Enforce Policy'
+        dependsOn:
+          - AnalyzePipelines
+          - PostPRComment
+        condition: always()
+        variables:
+          HasCritical: $[ dependencies.AnalyzePipelines.outputs['AnalyzeStep.HasCritical'] ]
+        steps:
+          - script: |
+              echo "Checking policy enforcement..."
+              echo "HasCritical: $(HasCritical)"
+              echo "Enforcement Mode: $AZDO_ENFORCEMENT_MODE"
+
+              if [ "$(HasCritical)" = "1" ] && [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ]; then
+                echo "##vso[task.logissue type=error]Pipeline analysis found critical issues - blocking PR"
+                exit 1
+              fi
+
+              echo "Policy check passed"
+            displayName: 'Check Policy Compliance'
+            env:
+              AZDO_ENFORCEMENT_MODE: $(AZDO_ENFORCEMENT_MODE)
