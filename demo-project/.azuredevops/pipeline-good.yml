@@ -57,8 +57,18 @@ stages:
           # SEC-001: Secret Scanning with gitleaks
           - script: |
               echo "Running gitleaks for secret detection..."
-              docker run --rm -v $(Build.SourcesDirectory):/repo zricethezav/gitleaks:latest detect --source /repo --no-git
+              docker run --rm -v $(Build.SourcesDirectory):/repo zricethezav/gitleaks:latest detect --source /repo --no-git --exit-code 0 || {
+                EXIT_CODE=$?
+                if [ $EXIT_CODE -eq 1 ]; then
+                  echo "##vso[task.logissue type=error]Secrets detected in repository!"
+                  echo "##vso[task.complete result=Failed;]Secrets found - please review and remediate"
+                else
+                  echo "##vso[task.logissue type=warning]Gitleaks scan encountered an issue (exit code: $EXIT_CODE)"
+                fi
+                exit $EXIT_CODE
+              }
             displayName: 'gitleaks - Secret Scanning'
+            continueOnError: false
 
           # SEC-002: SAST Analysis with SonarQube/Semgrep
           - script: |
@@ -208,3 +218,4 @@ stages:
 # [x] QUAL-001: Code coverage reporting
 # [x] PERF-001: NuGet caching configured
 # [x] All 6 mandatory stages present
+
