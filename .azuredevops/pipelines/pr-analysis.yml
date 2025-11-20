@@ -65,6 +65,23 @@ stages:
                 exit 0
               fi
 
+              # Filter out the pr-analysis pipeline itself and other non-application pipelines
+              FILTERED_FILES=""
+              for file in $CHANGED_FILES; do
+                # Skip pr-analysis.yml and other infrastructure pipelines
+                if [[ "$file" == *"pr-analysis.yml"* ]] || [[ "$file" == *"pr-analysis.yaml"* ]]; then
+                  echo "Skipping infrastructure pipeline: $file"
+                  continue
+                fi
+                FILTERED_FILES="$FILTERED_FILES $file"
+              done
+              CHANGED_FILES=$(echo $FILTERED_FILES | xargs)
+
+              if [ -z "$CHANGED_FILES" ]; then
+                echo "No application pipeline files to analyze"
+                exit 0
+              fi
+
               ANALYSIS_FAILED=0
               HAS_CRITICAL=0
               PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
