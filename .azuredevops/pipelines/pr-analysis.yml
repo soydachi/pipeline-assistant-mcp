@@ -120,7 +120,8 @@ stages:
                   echo "$OUTPUT"
 
                   # Extract score from output (looks for "Overall Score: XX/100" or "Score: XX/100")
-                  FILE_SCORE=$(echo "$OUTPUT" | grep -oE '(Overall )?Score: [0-9]+' | grep -oE '[0-9]+' | head -1)
+                  # Remove ANSI color codes first, then extract score
+                  FILE_SCORE=$(echo "$OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | grep -oE '(Overall )?Score: [0-9]+' | grep -oE '[0-9]+' | head -1)
                   if [ -n "$FILE_SCORE" ]; then
                     TOTAL_SCORE=$((TOTAL_SCORE + FILE_SCORE))
                     FILE_COUNT=$((FILE_COUNT + 1))
