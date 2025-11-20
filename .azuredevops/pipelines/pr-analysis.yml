@@ -98,49 +98,7 @@ stages:
               # Set wiki path to pipeline-assistant's wiki directory
               WIKI_PATH: $(Agent.TempDirectory)/pipeline-assistant/wiki/standards
 
-      - job: PRComment
-        displayName: 'Post Analysis to PR'
-        dependsOn: AnalyzePipelines
-        condition: always()
-        steps:
-          - checkout: self
-
-          - task: NodeTool@0
-            displayName: 'Install Node.js'
-            inputs:
-              versionSpec: '20.x'
-
-          # Clone pipeline-assistant from public GitHub repo
-          - script: |
-              set -e
-              echo "Cloning pipeline-assistant-mcp from GitHub..."
-              git clone --depth 1 https://github.com/soydachi/pipeline-assistant-mcp.git $(Agent.TempDirectory)/pipeline-assistant
-              cd $(Agent.TempDirectory)/pipeline-assistant
-              echo "Installing dependencies..."
-              npm ci
-              echo "Building..."
-              npm run build
-              echo "Pipeline Assistant setup complete"
-            displayName: 'Setup Pipeline Assistant'
-
-          - script: |
-              echo "Posting analysis results to PR..."
-
-              # Get PR ID from system variables
-              PR_ID=$(System.PullRequest.PullRequestId)
-
-              if [ -n "$PR_ID" ]; then
-                node $(Agent.TempDirectory)/pipeline-assistant/dist/cli/pr-bot-cli.js analyze \
-                  --pr-id "$PR_ID" \
-                  --post-comment
-              else
-                echo "Not running in PR context, skipping comment"
-              fi
-            displayName: 'Post PR Comment'
-            env:
-              # Use Azure DevOps predefined variables for org/project
-              AZDO_ORG_URL: $(System.CollectionUri)
-              AZDO_PAT: $(AZDO_PAT)
-              AZDO_PROJECT: $(System.TeamProject)
-              AZDO_REPOSITORY: $(Build.Repository.Name)
-            condition: and(succeeded(), ne(variables['System.PullRequest.PullRequestId'], ''))
+      # TODO: Implement Azure DevOps PR comment posting
+      # The current pr-bot-cli.js is designed for GitHub, not Azure DevOps
+      # For now, analysis results are shown in the pipeline logs
+      # Future: Use Azure DevOps REST API to post PR comments
