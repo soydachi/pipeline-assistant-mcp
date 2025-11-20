@@ -101,12 +101,8 @@ stages:
       - job: PostPRComment
         displayName: 'Post PR Comment'
         dependsOn: AnalyzePipelines
-        condition: |
-          and(
-            always(),
-            ne(variables['System.PullRequest.PullRequestId'], ''),
-            ne(variables['AZDO_PAT'], '')
-          )
+        # Run only when in PR context (System.PullRequest.PullRequestId is set)
+        condition: and(always(), ne(variables['System.PullRequest.PullRequestId'], ''))
         steps:
           - checkout: self
 
