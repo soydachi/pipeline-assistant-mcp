@@ -54,38 +54,35 @@ stages:
               packageType: 'sdk'
               version: $(dotnetVersion)
 
-          # SEC-001: Secret Scanning
+          # SEC-001: Secret Scanning with gitleaks
           - script: |
-              echo "Running TruffleHog for secret detection..."
-              docker run --rm -v $(Build.SourcesDirectory):/repo trufflesecurity/trufflehog:latest filesystem /repo --fail
-            displayName: 'SEC-001: Secret Scanning'
-            continueOnError: true
+              echo "Running gitleaks for secret detection..."
+              docker run --rm -v $(Build.SourcesDirectory):/repo zricethezav/gitleaks:latest detect --source /repo --no-git
+            displayName: 'gitleaks - Secret Scanning'
 
-          # SEC-002: SAST Analysis
-          - task: DotNetCoreCLI@2
-            displayName: 'SEC-002: SAST with Security Code Scan'
-            inputs:
-              command: 'custom'
-              custom: 'tool'
-              arguments: 'install --global security-scan'
-            continueOnError: true
+          # SEC-002: SAST Analysis with SonarQube/Semgrep
+          - script: |
+              echo "Running SAST analysis with semgrep..."
+              pip install semgrep
+              semgrep --config auto src/ --json --output semgrep-results.json || true
+            displayName: 'semgrep - SAST Analysis'
 
           # Restore dependencies (required for dependency scanning)
           - script: dotnet restore src/DemoApi.csproj
             displayName: 'Restore Dependencies for Security Scan'
 
-          # SEC-003: Dependency Scanning
+          # SEC-003: Dependency Scanning (SCA)
           - script: |
+              echo "Running dependency vulnerability scan..."
               dotnet list src/DemoApi.csproj package --vulnerable --include-transitive
-            displayName: 'SEC-003: Dependency Vulnerability Scan'
+            displayName: 'dotnet - Dependency Vulnerability Scan'
 
           # SEC-008: License Compliance
           - script: |
               echo "Checking license compliance..."
-              dotnet tool install --global dotnet-project-licenses
-              dotnet-project-licenses -i src/DemoApi.csproj
-            displayName: 'SEC-008: License Compliance Check'
-            continueOnError: true
+              dotnet tool install --global dotnet-project-licenses || true
+              dotnet-project-licenses -i src/DemoApi.csproj || true
+            displayName: 'License Compliance Check'
 
   # Stage 3: Build
   - stage: Build
@@ -117,10 +114,9 @@ stages:
 
           # SEC-010: SBOM Generation
           - script: |
-              dotnet tool install --global Microsoft.Sbom.DotNetTool
-              sbom-tool generate -b $(Build.ArtifactStagingDirectory) -bc src -pn DemoApi -pv $(Build.BuildNumber) -ps Contoso
-            displayName: 'SEC-010: Generate SBOM'
-            continueOnError: true
+              dotnet tool install --global Microsoft.Sbom.DotNetTool || true
+              sbom-tool generate -b $(Build.ArtifactStagingDirectory) -bc src -pn DemoApi -pv $(Build.BuildNumber) -ps Contoso || true
+            displayName: 'sbom-tool - Generate SBOM'
 
           - script: dotnet publish src/DemoApi.csproj --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/app
             displayName: 'Publish Application'
