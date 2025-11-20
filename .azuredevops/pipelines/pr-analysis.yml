@@ -160,6 +160,14 @@ stages:
                 echo "##vso[task.logissue type=warning]Pipeline analysis found high severity issues"
               fi
             displayName: 'Analyze Changed Pipelines'
+            env:
+              AZDO_ORG_URL: $(System.CollectionUri)
+              AZDO_PAT: $(AZDO_PAT)
+              AZDO_PROJECT: $(System.TeamProject)
+              AZDO_REPOSITORY: $(Build.Repository.Name)
+              AZDO_ENFORCEMENT_MODE: $(AZDO_ENFORCEMENT_MODE)
+              AZDO_STRICT_MODE: $(AZDO_STRICT_MODE)
+              WIKI_PATH: $(Agent.TempDirectory)/pipeline-assistant/wiki/standards
 
           # Publish analysis results as pipeline artifact
           # Always run this even if previous step exits early
