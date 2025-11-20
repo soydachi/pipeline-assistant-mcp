@@ -85,6 +85,8 @@ stages:
               ANALYSIS_FAILED=0
               HAS_CRITICAL=0
               PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
+              TOTAL_SCORE=0
+              FILE_COUNT=0
 
               for file in $CHANGED_FILES; do
                 if [ -f "$file" ]; then
@@ -96,12 +98,22 @@ stages:
                   # Use absolute path for the file being analyzed
                   FULL_PATH="$(Build.SourcesDirectory)/$file"
 
-                  # Run analysis and capture exit code
+                  # Run analysis and capture output to extract score
                   # Exit codes: 0=pass, 1=high violations, 2=critical violations
                   set +e
-                  node $PA_DIR/dist/cli/pipeline-assistant.js analyze -f "$FULL_PATH"
+                  OUTPUT=$(node $PA_DIR/dist/cli/pipeline-assistant.js analyze -f "$FULL_PATH" 2>&1)
                   EXIT_CODE=$?
                   set -e
+
+                  # Print the output
+                  echo "$OUTPUT"
+
+                  # Extract score from output (looks for "Score: XX/100")
+                  FILE_SCORE=$(echo "$OUTPUT" | grep -oE 'Score: [0-9]+' | grep -oE '[0-9]+' | head -1)
+                  if [ -n "$FILE_SCORE" ]; then
+                    TOTAL_SCORE=$((TOTAL_SCORE + FILE_SCORE))
+                    FILE_COUNT=$((FILE_COUNT + 1))
+                  fi
 
                   if [ $EXIT_CODE -eq 2 ]; then
                     HAS_CRITICAL=1
@@ -112,6 +124,22 @@ stages:
                 fi
               done
 
+              # Calculate average score
+              if [ $FILE_COUNT -gt 0 ]; then
+                AVG_SCORE=$((TOTAL_SCORE / FILE_COUNT))
+              else
+                AVG_SCORE=100
+              fi
+
+              # Set output variable for use in subsequent jobs
+              echo "##vso[task.setvariable variable=AnalysisScore;isOutput=true]$AVG_SCORE"
+              echo "##vso[task.setvariable variable=HasCritical;isOutput=true]$HAS_CRITICAL"
+              echo "##vso[task.setvariable variable=AnalysisFailed;isOutput=true]$ANALYSIS_FAILED"
+              echo ""
+              echo "=========================================="
+              echo "Analysis Summary: Average Score = $AVG_SCORE/100"
+              echo "=========================================="
+
               # Only fail the pipeline if in enforcement mode AND has critical issues
               if [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ] && [ $HAS_CRITICAL -eq 1 ]; then
                 echo "##vso[task.logissue type=error]Pipeline analysis found critical issues"
@@ -119,6 +147,7 @@ stages:
               elif [ "$AZDO_ENFORCEMENT_MODE" = "enforcement" ] && [ $ANALYSIS_FAILED -eq 1 ]; then
                 echo "##vso[task.logissue type=warning]Pipeline analysis found high severity issues"
               fi
+            name: AnalyzeStep
             displayName: 'Analyze Changed Pipelines'
             env:
               # Use Azure DevOps predefined variables for org/project
@@ -137,6 +166,8 @@ stages:
         dependsOn: AnalyzePipelines
         # Run only when in PR context (System.PullRequest.PullRequestId is set)
         condition: and(always(), ne(variables['System.PullRequest.PullRequestId'], ''))
+        variables:
+          AnalysisScore: $[ dependencies.AnalyzePipelines.outputs['AnalyzeStep.AnalysisScore'] ]
         steps:
           - checkout: self
 
@@ -164,9 +195,13 @@ stages:
               PA_DIR=$(Agent.TempDirectory)/pipeline-assistant
               PR_ID=$(System.PullRequest.PullRequestId)
 
-              # Simple score based on job result (can be enhanced to pass actual score)
-              # For now, we'll use a placeholder score
-              SCORE=0
+              # Use actual score from analysis job
+              SCORE=$(AnalysisScore)
+              if [ -z "$SCORE" ] || [ "$SCORE" = "" ]; then
+                SCORE=100  # Default if no files were analyzed
+              fi
+
+              echo "Analysis Score: $SCORE/100"
 
               # Post comment to Azure DevOps PR
               node $PA_DIR/dist/cli/pr-comment-cli.js azdo \
